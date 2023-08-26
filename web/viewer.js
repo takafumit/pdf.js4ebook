@@ -68,6 +68,11 @@ function getViewerConfiguration() {
         "editorStampParamsToolbar"
       ),
       download: document.getElementById("download"),
+markerMode: document.getElementById("markerModeCheckBox"),
+      markerManageMode: document.getElementById("markerManageModeCheckBox"),
+      questionMode: document.getElementById("questionModeCheckBox"),  //追加→ここでhtmlのidを取得してると思う
+      questionManageMode: document.getElementById("questionManageModeCheckBox"),  //追加
+      viewBookmark: document.getElementById("viewBookmark"),
     },
     secondaryToolbar: {
       toolbar: document.getElementById("secondaryToolbar"),

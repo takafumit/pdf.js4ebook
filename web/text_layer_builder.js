@@ -48,20 +48,25 @@ class TextLayerBuilder {
 
   constructor({
     highlighter = null,
+    pageIndex,
     accessibilityManager = null,
     isOffscreenCanvasSupported = true,
     enablePermissions = false,
   }) {
     this.textContentItemsStr = [];
     this.renderingDone = false;
+    
     this.textDivs = [];
     this.textDivProperties = new WeakMap();
     this.textLayerRenderTask = null;
+    this.pageNumber = pageIndex + 1;
     this.highlighter = highlighter;
     this.accessibilityManager = accessibilityManager;
     this.isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this.#enablePermissions = enablePermissions === true;
-
+    this.mouseDownTarget = null;
+    this.mouseDownX = -1;
+    this.mouseDownY = -1;
     this.div = document.createElement("div");
     this.div.className = "textLayer";
     this.hide();
@@ -173,7 +178,48 @@ class TextLayerBuilder {
     this.cancel();
     this.#textContentSource = source;
   }
+  _addHighlight(pageNumber, note, text, fullText, beginDivIdx, beginOffset, endDivIdx, endDivOffset, top, left, width, height) {//top, left, width, height
+    
+    let highlight = {
+      id: PDFViewerApplication.nextHighlightId++,//仮
+      userId: PDFViewerApplication.userId,
+      materialId: PDFViewerApplication.materialId,
+      page: pageNumber,
+      createTime: "",
+      note: note,
+      text: text,
+      fullText: fullText,
+      begin: {
+        divIdx: beginDivIdx,
+        offset: beginOffset
+      },
+      end: {
+        divIdx: endDivIdx,
+        offset: endDivOffset
+      },
+      top: top,
+      left: left,
+      width: width,
+      height: height
+    }
 
+    if(PDFViewerApplication.markerMode){
+    
+    //ここでサーバに送信し、idを返却してもらう
+    //仮idの値をnullに変更
+    PDFViewerApplication.addHighlight(highlight).done(function(result) {
+        highlight.id = result;
+      }).fail(function(result) {
+        alert("Connection error.")
+      }).always(function (result) {
+          // 常に実行する処理
+      });
+      
+      PDFViewerApplication.pdfViewer.getPageView(this.pageNumber-1).addHighlight(highlight);//PDFPageViewにadd/removeHighlights()を作成
+    }
+    
+  }
+  
   /**
    * Improves text selection by adding an additional div where the mouse was
    * clicked. This reduces flickering of the content if the mouse is slowly
@@ -207,11 +253,80 @@ class TextLayerBuilder {
       end.classList.add("active");
     });
 
-    div.addEventListener("mouseup", () => {
+      //diffとったらここ追加されてた→どこがquestionに必要?
+      div.addEventListener("mouseup", evt => {
+      if (this.enhanceTextSelection && this.textLayerRenderTask) {
+        if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
+          expandDivsTimer = setTimeout(() => {
+            if (this.textLayerRenderTask) {
+              this.textLayerRenderTask.expandTextDivs(false);
+            }
+            expandDivsTimer = null;
+          }, EXPAND_DIVS_TIMEOUT);
+        } else {
+          this.textLayerRenderTask.expandTextDivs(false);
+        }
+        return;
+      }
+
+      let s = window.getSelection();
+      let isToAddTextHighlight = s.toString().length !== 0;
+
+      isToAddTextHighlight = isToAddTextHighlight && this.mouseDownTarget.id.split(":")[0] == "text";
+      isToAddTextHighlight = isToAddTextHighlight && evt.target.id.split(":")[0] == "text";
+
+      if (isToAddTextHighlight) {
+        let startId = this.mouseDownTarget.id.split(":")[1];
+        let endId = evt.target.id.split(":")[1];
+
+        let anchorOffset = s.anchorOffset;
+        let focusOffset = s.focusOffset;
+
+        if (Number(startId) == Number(endId) && anchorOffset > focusOffset) {
+          let tmp = anchorOffset;
+          anchorOffset = focusOffset;
+          focusOffset = tmp;
+        }
+
+        if (Number(startId) > Number(endId)) {
+          let tmp = startId;
+          startId = endId;
+          endId = tmp;
+          tmp = anchorOffset;
+          anchorOffset = focusOffset;
+          focusOffset = tmp;
+        }
+
+        let fulltext = "";
+        for (let i = startId, ii = endId; i <= ii; i++) {
+          fulltext = fulltext + this.textContentItemsStr[i];
+        }
+
+        this._addHighlight(this.pageNumber-1, "note", s.toString(), fulltext, startId, anchorOffset, endId, focusOffset, -1, -1, -1, -1);
+
+      }
+      else{
+        const mouseUpX = 100*evt.offsetX/div.offsetWidth;
+        const mouseUpY = 100*evt.offsetY/div.offsetHeight;
+        const width = Math.abs(this.mouseDownX - mouseUpX);
+        const height = Math.abs(this.mouseDownY - mouseUpY);
+        const top = Math.min(this.mouseDownY, mouseUpY);
+        const left = Math.min(this.mouseDownX, mouseUpX);
+        if(width >= 2 && height >= 2){
+          this._addHighlight(this.pageNumber-1, "note", "freebox", "none", -1, -1, -1, -1, top, left, width, height);
+        }
+      }
+
+
       const end = div.querySelector(".endOfContent");
       if (!end) {
         return;
       }
+
+      this.mouseDownTarget == null;
+      this.mouseDownX = null;
+      this.mouseDownY = null;
+
       if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
         end.style.top = "";
       }
