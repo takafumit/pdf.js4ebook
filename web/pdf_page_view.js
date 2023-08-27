@@ -48,6 +48,8 @@ import { StructTreeLayerBuilder } from "./struct_tree_layer_builder.js";
 import { TextAccessibilityManager } from "./text_accessibility.js";
 import { TextHighlighter } from "./text_highlighter.js";
 import { TextLayerBuilder } from "./text_layer_builder.js";
+import { HighlightLayerBuilder } from "./highlight_layer_builder.js";
+import { QuestionLayerBuilder } from "./question_layer_builder.js";
 import { XfaLayerBuilder } from "./xfa_layer_builder.js";
 
 /**
@@ -177,8 +179,8 @@ class PDFPageView {
       });
     this.structTreeLayerFactory = options.structTreeLayerFactory;
     if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || GENERIC")
+      typeof PDFJSDev === "undefined" 
+    //   || PDFJSDev.test("!PRODUCTION || GENERIC")
     ) {
       this.renderer = options.renderer || RendererType.CANVAS;
     }
@@ -203,7 +205,7 @@ class PDFPageView {
     this.annotationLayer = null;
     this.annotationEditorLayer = null;
     this.textLayer = null;  //追加
-    his.highlightLayer = null;
+    this.highlightLayer = null;
     this.questionLayer = null;  //追加
     this.zoomLayer = null;
     this.xfaLayer = null;
@@ -433,6 +435,8 @@ class PDFPageView {
 
     this.#renderStructTreeLayer();
   }
+
+
 
   /**
    * The structure tree is currently only supported when the text layer is
@@ -851,26 +855,11 @@ class PDFPageView {
         this.#renderTextLayer();
       }
     }
-
-    if (this.highlightLayer) {
-      if (hideTextLayer) {
-        PDFApplication.highlight,
-        this.highlightLayer.hide();
-        this.structTreeLayer?.hide();
-      } else if (redrawTextLayer) {
-        this.#renderhighlightLayer();
-      }
-    }
-
-    if (this.questionLayerLayer) {
-      if (hideTextLayer) {
-        this.questionLayer.hide();
-        this.structTreeLayer?.hide();
-      } else if (redrawTextLayer) {
-        this.#renderQuestionLayer();
-      }
-    }
   }
+
+
+
+  
 
   get width() {
     return this.viewport.width;
@@ -954,6 +943,46 @@ class PDFPageView {
       });
       div.append(this.textLayer.div);
     }
+
+
+    //2023-08-26 ここにhighlightLayerとquestionlayerを追加
+    if (
+      !this.highlightLayer &&
+      this.#textLayerMode !== TextLayerMode.DISABLE &&
+      !pdfPage.isPureXfa
+    ) {
+      this._accessibilityManager ||= new TextAccessibilityManager();
+
+      this.highlightLayer = new HighlightLayerBuilder({
+        highlights: PDFViewerApplication.highlights,
+        highlighter: this._textHighlighter,
+        accessibilityManager: this._accessibilityManager,
+        isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
+        enablePermissions:
+          this.#textLayerMode === TextLayerMode.ENABLE_PERMISSIONS,
+      });
+      div.append(this.highlightLayer.div);
+    }
+
+    if (
+      !this.questionLayer &&
+      this.#textLayerMode !== TextLayerMode.DISABLE &&
+      !pdfPage.isPureXfa
+    ) {
+      this._accessibilityManager ||= new TextAccessibilityManager();
+
+      this.questionLayer = new QuestionLayerBuilder({
+        questions: PDFViewerApplication.questions,
+        highlighter: this._textHighlighter,
+        accessibilityManager: this._accessibilityManager,
+        isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
+        enablePermissions:
+          this.#textLayerMode === TextLayerMode.ENABLE_PERMISSIONS,
+      });
+      div.append(this.questionLayer.div);
+    }
+
+
 
     if (
       !this.annotationLayer &&
