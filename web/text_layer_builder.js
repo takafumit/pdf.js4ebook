@@ -49,6 +49,7 @@ class TextLayerBuilder {
   constructor({
     highlighter = null,
     pageIndex,
+    viewport,
     accessibilityManager = null,
     isOffscreenCanvasSupported = true,
     enablePermissions = false,
@@ -61,6 +62,7 @@ class TextLayerBuilder {
     this.textLayerRenderTask = null;
     this.pageNumber = pageIndex + 1;
     this.highlighter = highlighter;
+    this.viewport = viewport;
     this.accessibilityManager = accessibilityManager;
     this.isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this.#enablePermissions = enablePermissions === true;
@@ -70,6 +72,12 @@ class TextLayerBuilder {
     this.div = document.createElement("div");
     this.div.className = "textLayer";
     this.hide();
+    if(PDFViewerApplication.markerManageMode||PDFViewerApplication.questionManageMode){ //またはquestionManageModeがTrueの場合に変更
+      this.div.style.zIndex=1;
+    }
+    else{
+      this.div.style.zIndex=4;    //zIndex=3から4に変更
+    }
   }
 
   #finishRendering() {

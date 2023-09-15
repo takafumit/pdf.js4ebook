@@ -40,6 +40,8 @@ class AnnotationEditorParams {
         value,
       });
     };
+
+    /* viewer.htmlで無効にしているボタンに対するイベント追加のため，コメント
     editorFreeTextFontSize.addEventListener("input", function () {
       dispatchEvent("FREETEXT_SIZE", this.valueAsNumber);
     });
@@ -58,6 +60,8 @@ class AnnotationEditorParams {
     editorStampAddImage.addEventListener("click", () => {
       dispatchEvent("CREATE");
     });
+   
+    */
 
     this.eventBus._on("annotationeditorparamschanged", evt => {
       for (const [type, value] of evt.details) {

@@ -49,8 +49,9 @@ class HighlightLayerBuilder {
 
   constructor({
     highlights,
-    highlighter = null,
     pageIndex,
+    viewport,
+    highlighter = null,
     accessibilityManager = null,
     isOffscreenCanvasSupported = true,
     enablePermissions = false,
@@ -65,6 +66,7 @@ class HighlightLayerBuilder {
     this.textLayerRenderTask = null;
     this.pageNumber = pageIndex + 1;
     this.highlighter = highlighter;
+    this.viewport = viewport;
     this.accessibilityManager = accessibilityManager;
     this.isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this.#enablePermissions = enablePermissions === true;
@@ -77,13 +79,19 @@ class HighlightLayerBuilder {
     this.mouseDownTarget = null;
     this.contextMenu = document.getElementById('conmenu');
     this.noteArea = document.getElementById('notearea');
-    this.textLayerDiv.addEventListener('click',function (e){
+    this.div.addEventListener('click',function (e){
       //メニューとノートエリアを非表示にさせる
       const conmenu = document.getElementById('conmenu');
       conmenu.parentNode.removeChild(conmenu);
       const notearea = document.getElementById('notearea');
       notearea.parentNode.removeChild(notearea);
     });
+    if(PDFViewerApplication.markerManageMode||PDFViewerApplication.questionManageMode){ //またはquestionManageModeがTrueの場合に変更
+      this.div.style.zIndex=1;
+    }
+    else{
+      this.div.style.zIndex=4;    //zIndex=3から4に変更
+    }
   }
   removeHighlight(pageIdx,highlight){
     PDFViewerApplication.pdfViewer.getPageView(pageIdx).removeHighlight(highlight);

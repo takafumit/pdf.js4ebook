@@ -781,60 +781,60 @@ class PDFPageView {
         scaleY = width / height;
       }
       target.style.transform = `rotate(${relativeRotation}deg) scale(${scaleX}, ${scaleY})`;
-      if (this.textLayer) {
-      // Rotating the text layer is more complicated since the divs inside the
-      // the text layer are rotated.
-      // TODO: This could probably be simplified by drawing the text layer in
-      // one orientation and then rotating overall.
-      const textLayerViewport = this.textLayer.viewport;
-      const textRelativeRotation =
-        this.viewport.rotation - textLayerViewport.rotation;
-      const textAbsRotation = Math.abs(textRelativeRotation);
-      let scale = width / textLayerViewport.width;
-      if (textAbsRotation === 90 || textAbsRotation === 270) {
-        scale = width / textLayerViewport.height;
-      }
-      const textLayerDiv = this.textLayer.textLayerDiv;
-      let transX, transY;
-      switch (textAbsRotation) {
-        case 0:
-          transX = transY = 0;
-          break;
-        case 90:
-          transX = 0;
-          transY = "-" + textLayerDiv.style.height;
-          break;
-        case 180:
-          transX = "-" + textLayerDiv.style.width;
-          transY = "-" + textLayerDiv.style.height;
-          break;
-        case 270:
-          transX = "-" + textLayerDiv.style.width;
-          transY = 0;
-          break;
-        default:
-          console.error("Bad rotation value.");
-          break;
-      }
+      // if (this.textLayer) {
+      // // Rotating the text layer is more complicated since the divs inside the
+      // // the text layer are rotated.
+      // // TODO: This could probably be simplified by drawing the text layer in
+      // // one orientation and then rotating overall.
+      // const textLayerViewport = this.textLayer.viewport;
+      // const textRelativeRotation =
+      //   this.viewport.rotation - textLayerViewport.rotation;
+      // const textAbsRotation = Math.abs(textRelativeRotation);
+      // let scale = width / textLayerViewport.width;
+      // if (textAbsRotation === 90 || textAbsRotation === 270) {
+      //   scale = width / textLayerViewport.height;
+      // }
+      // const textLayerDiv = this.textLayer.textLayerDiv;
+      // let transX, transY;
+      // switch (textAbsRotation) {
+      //   case 0:
+      //     transX = transY = 0;
+      //     break;
+      //   case 90:
+      //     transX = 0;
+      //     transY = "-" + textLayerDiv.style.height;
+      //     break;
+      //   case 180:
+      //     transX = "-" + textLayerDiv.style.width;
+      //     transY = "-" + textLayerDiv.style.height;
+      //     break;
+      //   case 270:
+      //     transX = "-" + textLayerDiv.style.width;
+      //     transY = 0;
+      //     break;
+      //   default:
+      //     console.error("Bad rotation value.");
+      //     break;
+      // }
 
-      textLayerDiv.style.transform =
-      `rotate(${textAbsRotation}deg) ` +
-      `scale(${scale}) ` +
-      `translate(${transX}, ${transY})`;
-    textLayerDiv.style.transformOrigin = "0% 0%";
+      // textLayerDiv.style.transform =
+      // `rotate(${textAbsRotation}deg) ` +
+      // `scale(${scale}) ` +
+      // `translate(${transX}, ${transY})`;
+      // textLayerDiv.style.transformOrigin = "0% 0%";
 
-    if(this.highlightLayer){
-      const highlightLayerDiv = this.highlightLayer.textLayerDiv;
-      highlightLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
-      highlightLayerDiv.style.transformOrigin = "0% 0%";
-    }
+      // if(this.highlightLayer){
+      //   const highlightLayerDiv = this.highlightLayer.textLayerDiv;
+      //   highlightLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
+      //   highlightLayerDiv.style.transformOrigin = "0% 0%";
+      // }
 
-    if(this.questionLayer){
-      const questionLayerDiv = this.questionLayer.textLayerDiv;
-      questionLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
-      questionLayerDiv.style.transformOrigin = "0% 0%";
-    }
-  }
+      // if(this.questionLayer){
+      //   const questionLayerDiv = this.questionLayer.textLayerDiv;
+      //   questionLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
+      //   questionLayerDiv.style.transformOrigin = "0% 0%";
+      // }
+      //  }
     }
 
     if (redrawAnnotationLayer && this.annotationLayer) {
@@ -935,6 +935,8 @@ class PDFPageView {
       this._accessibilityManager ||= new TextAccessibilityManager();
 
       this.textLayer = new TextLayerBuilder({
+        viewport: this.viewport,
+        pageIndex: this.id - 1,
         highlighter: this._textHighlighter,
         accessibilityManager: this._accessibilityManager,
         isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
@@ -956,6 +958,8 @@ class PDFPageView {
       this.highlightLayer = new HighlightLayerBuilder({
         highlights: PDFViewerApplication.highlights,
         highlighter: this._textHighlighter,
+        pageIndex: this.id - 1,
+        viewport: this.viewport,
         accessibilityManager: this._accessibilityManager,
         isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
         enablePermissions:
@@ -974,6 +978,8 @@ class PDFPageView {
       this.questionLayer = new QuestionLayerBuilder({
         questions: PDFViewerApplication.questions,
         highlighter: this._textHighlighter,
+        pageIndex: this.id - 1,
+        viewport: this.viewport,
         accessibilityManager: this._accessibilityManager,
         isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
         enablePermissions:

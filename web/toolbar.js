@@ -66,6 +66,8 @@ class Toolbar {
       { element: options.zoomOut, eventName: "zoomout" },
       { element: options.print, eventName: "print" },
       { element: options.download, eventName: "download" },
+      
+      /* アノテーションモード無効化のためコメント
       {
         element: options.editorFreeTextButton,
         eventName: "switchannotationeditormode",
@@ -102,6 +104,7 @@ class Toolbar {
           },
         },
       },
+      */
     ];
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       this.buttons.push({ element: options.openFile, eventName: "openfile" });
@@ -221,6 +224,8 @@ class Toolbar {
     editorStampParamsToolbar,
   }) {
     const editorModeChanged = ({ mode }) => {
+
+      /* 手書きアノテーション無効化
       toggleCheckedBtn(
         editorFreeTextButton,
         mode === AnnotationEditorType.FREETEXT,
@@ -241,6 +246,7 @@ class Toolbar {
       editorFreeTextButton.disabled = isDisable;
       editorInkButton.disabled = isDisable;
       editorStampButton.disabled = isDisable;
+      */
     };
     this.eventBus._on("annotationeditormodechanged", editorModeChanged);
 

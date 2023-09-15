@@ -50,6 +50,8 @@ class QuestionLayerBuilder {
   constructor({
     questions,
     pageIndex,
+    viewport,
+    highlighter = null,
     accessibilityManager = null,
     isOffscreenCanvasSupported = true,
     enablePermissions = false,
@@ -63,6 +65,7 @@ class QuestionLayerBuilder {
     this.textLayerRenderTask = null;
     this.pageNumber = pageIndex + 1;
     this.highlighter = highlighter;
+    this.viewport = viewport;
     this.accessibilityManager = accessibilityManager;
     this.isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this.#enablePermissions = enablePermissions === true;
@@ -75,7 +78,7 @@ class QuestionLayerBuilder {
     this.mouseDownTarget = null;
     this.contextMenu = document.getElementById('conmenu');
     this.noteArea = document.getElementById('notearea');
-    this.textLayerDiv.addEventListener('click', function (e) {
+    this.div.addEventListener('click', function (e) {
       //メニューとノートエリアを非表示にさせる
       const conmenu = document.getElementById('conmenu');
       if (conmenu) {
@@ -86,6 +89,12 @@ class QuestionLayerBuilder {
         notearea.parentNode.removeChild(notearea);
       }
     });
+    if(PDFViewerApplication.markerManageMode||PDFViewerApplication.questionManageMode){ //またはquestionManageModeがTrueの場合に変更
+      this.div.style.zIndex=1;
+    }
+    else{
+      this.div.style.zIndex=4;    //zIndex=3から4に変更
+    }
   }
 
   #finishRendering() {
@@ -369,7 +378,7 @@ class QuestionLayerBuilder {
         if(s?.anchorNode?.parentElement?.style?.top || s?.focusNode?.parentElement?.style?.top) { //値あるか確認
           if(s.anchorNode.parentElement.style.top === s.focusNode.parentElement.style.top){
             this._addQuestion(this.pageNumber - 1, "note", s.toString(), fulltext, startId, anchorOffset, endId, focusOffset, -1, -1, -1, -1);
-}
+          }
         }
       }
       // else{
@@ -418,7 +427,7 @@ class QuestionLayerBuilder {
     if (!this.enhanceTextSelection) {
       const endOfContent = document.createElement("div");
       endOfContent.className = "endOfContent";
-      this.textLayerDiv.appendChild(endOfContent);
+      this.div.appendChild(endOfContent);
     }
 
     this.eventBus.dispatch("questionlayerrendered", {//highlightlayerrenderedを作成する必要がある

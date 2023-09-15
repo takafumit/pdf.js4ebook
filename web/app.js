@@ -231,9 +231,208 @@ const PDFViewerApplication = {
   _touchInfo: null,
   _isCtrlKeyDown: false,
   _nimbusDataPromise: null,
+    //*** */
+    userId: null, //Fixed userId
+    materialId: null, //Fixed ドキュメントのid
+    highlights: [], //Fixed ドキュメント全体のhighlights
+  // questions:[{"id":750,"materialId":71,"page":0,"userId":179,"createTime":1663144820000,"highlightColor":null,"note":"note","text":"?????","fullText":"?????","begin":{"divIdx":2,"offset":0},"end":{"divIdx":2,"offset":5},"top":-1,"left":-1,"width":-1,"height":-1}],  //テストで追加
+    questions: [], //空にしてみる
+    //highlight: null, 
+    nextHighlightId: 0,
+    highlightMode: 0,
+    markerMode:false,
+    markerManageMode:false,
+    questionMode:false, //追加
+    questionManageMode:false, //追加
+
+
+  
+    sendLog(operationType, materialId, page, log /*:String*/) {
+      jQuery.ajax({
+        url: "../c/LoggerAjaxServlet",
+        type: "Post",
+        data: { 
+          operationType:operationType,
+          materialId:materialId,
+          page:page,
+          log: log 
+        }
+      }).done(function (result) {
+        // 通信成功時のコールバック
+        //alert("送信成功")
+      }).fail(function () {
+        // 通信失敗時のコールバック
+        alert("読み込み失敗");
+      }).always(function (result) {
+        // 常に実行する処理
+      });
+    },
+  
+    //★こっから追加20230213
+    /*
+    * 
+    * @param {number} operationType 
+    * @param {number} materialId 
+    * @param {number} page 
+    * @param {string} log 
+      sendBeaconLog(operationType, materialId, page, log){
+     var formData = new FormData();
+     formData.append("operationType",operationType);
+     formData.append("materialId",materialId);
+     formData.append("page",page);
+     formData.append("log",log);
+     navigator.sendBeacon()
+   }, */
+    
+    addHighlight(highlight /*:String*/) {
+      return jQuery.ajax({
+        url: "../c/AddHighlightServlet",
+        type: "Post",
+        data: { highlight: JSON.stringify(highlight) },
+      });
+    
+  
+      
+      // jQuery.ajax({
+      //   url: "./AddHighlightServlet",
+      //   type: "Post",
+      //   async:false,
+      //   data: { highlight: JSON.stringify(highlight) },
+      // }).done(function (result) {
+      //   // 通信成功時のコールバック
+      //   //alert("送信成功")
+      //   return result;
+        
+      // }).fail(function () {
+      //   // 通信失敗時のコールバック
+      //   alert("ハイライト送信エラー");
+      // }).always(function (result) {
+      //   // 常に実行する処理
+      // });
+    },
+    
+  
+    updateHighlight(highlight /*:String*/) {
+      return jQuery.ajax({
+        url: "../c/UpdateHighlightServlet",
+        type: "Post",
+        data: { highlightId: highlight.id,
+                note: highlight.note },
+      });
+    
+    },
+    
+    highlightList(materialId /*:int*/) {
+      return jQuery.ajax({
+        url: "../c/HighlightListServlet",
+        type: "Post",
+        data: { materialId: materialId },
+      });
+    
+    },
+    
+    removeHighlight(highlightId /*:int*/) {
+      return jQuery.ajax({
+        url: "../c/RemoveHighlightServlet",
+        type: "Post",
+        data: { highlightId: highlightId},
+      });
+    
+    },
+    /*** */
+  
+  
+   //★追加
+  //Servlet未実装なのでコメントアウトしとく
+    addQuestion(question /*:String*/) {
+      //alert("app.jsのaddQuestion:"+questions);
+      return jQuery.ajax({
+      url: "../c/AddQuestionServlet",
+      type: "Post",
+      data: { question: JSON.stringify(question) },
+      });
+    },
+  
+    updateQuestion(question /*:String*/) {
+      return jQuery.ajax({
+        url: "../c/UpdateQuestionServlet",
+        type: "Get",
+        data: { questionId: question.id,
+                note: question.note },
+      });
+    
+    },
+    
+    questionList(materialId /*:int*/) { //こいつがまず呼ばれないとあかん
+      return jQuery.ajax({
+        url: "../c/QuestiontListServlet",  //全然呼ばれないからいったんHighlightの方で確認
+        type: "Post",
+        data: { materialId: materialId },
+      });
+    
+    },
+    
+    removeQuestion(questionId /*:int*/) {
+      return jQuery.ajax({
+        url: "../c/RemoveQuestionServlet",
+        type: "Post",
+        data: { questionId: questionId},
+      });
+  
+    },
+  
+    //試しに追加
+    // checkQuestion(questionId /*:int*/,inputAnswer /*String*/){
+    //   alert("チェッククエスチョンが呼ばれてるよ");
+    //   return jQuery.ajax({
+    //     url: "../c/CheckQuestionServlet",
+    //     type: "Get",
+    //     data: { questionId: questionId,
+    //             inputAnswer: inputAnswer},
+    //   }); 
+    // }, 
+    
+    updateInputAns(questionId /*:int*/,inputAnswer /*String*/){
+      //alert("idは"+questionId+"文字列は"+inputAnswer);
+      alert("送信完了");
+      $.ajax({
+        url: "../c/UpdateInputAns", //アクセスするURLかディレクトリ
+        type: "Post",
+        data:{ questionId: questionId,
+               inputAnswer: inputAnswer,
+               materialId : this.materialId},
+        });
+    },
+  
+    getQuestionInput(materialId/*int*/,questionId /*:int*/) {
+      //alert("app.jsのaddQuestion:"+questions);
+      return jQuery.ajax({
+      url: "../c/GetQuestionInputServlet",
+      type: "Get",
+      data: { materialId: materialId, //変更→this消した
+              questionId: questionId},
+      });
+    },
+  
+    getQuestionCreateUserType(materialId,/*int*/questionId/*int*/){
+      return jQuery.ajax({
+        url: "../c/GetCreateUserTypeServlet",
+        type: "Get",
+        data: { materialId: materialId,
+                questionId: questionId},
+        });
+    },
+  
+    //★からここまで追加
 
   // Called once when the document is loaded.
   async initialize(appConfig) {
+
+    var script = document.createElement("SCRIPT");
+    script.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+    script.type = 'text/javascript';
+    document.getElementsByTagName("head")[0].appendChild(script);
+
     this.preferences = this.externalServices.createPreferences();
     this.appConfig = appConfig;
 
@@ -695,11 +894,47 @@ const PDFViewerApplication = {
 
     const { appConfig, eventBus } = this;
     let file;
+    let userId;
+    let materialId;
+    let userType;//追加
+
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       const queryString = document.location.search.substring(1);
       const params = parseQueryString(queryString);
+      userId = params.get("userid") ??  -1;
+      materialId = params.get("materialid") ??  -1;
+      userType = params.get("usertype") ?? -1;//追加
+      PDFViewerApplication.userId = userId;
+      PDFViewerApplication.materialId = materialId;
+
+      console.log("userId"+ userId);
+      console.log("materialId"+ materialId);
+      console.log({userType}.toString());  //追加
       file = params.get("file") ?? AppOptions.get("defaultUrl");
       validateFileURL(file);
+
+      PDFViewerApplication.highlightList(materialId).done(function (result){
+        console.log("highlightList"+ result);
+        result.replace(/\\/g, "");
+        PDFViewerApplication.highlights = JSON.parse(result);
+      }).fail(function () {
+        alert("読み込み失敗");
+      }).always(function (result) {
+      // 常に実行する処理
+      });
+      //★追加
+      PDFViewerApplication.questionList(materialId).done(function (result){  
+        console.log("questionList"+ result);
+        result.replace(/\\/g, "");
+        PDFViewerApplication.questions = JSON.parse(result);
+      }).fail(function () {
+        alert("読み込み失敗");  
+      }).always(function (result) {
+      // 常に実行する処理
+      });
+      //★からここまで追加
+
+
     } else if (PDFJSDev.test("MOZCENTRAL")) {
       file = window.location.href;
     } else if (PDFJSDev.test("CHROME")) {
@@ -1935,11 +2170,72 @@ const PDFViewerApplication = {
     window.print();
   },
 
+  //markerMode
+  webViewerMarkerMode() {
+    PDFViewerApplication.markerMode = !PDFViewerApplication.markerMode;
+    console.log("PDFViewerApplication.markerMode=" + PDFViewerApplication.markerMode);
+    //alert("markerMode作動");  //テスト用のアラート表示
+  },
+
+  //markerMode
+  webViewerMarkerManageMode(){
+    PDFViewerApplication.markerManageMode = !PDFViewerApplication.markerManageMode;
+    console.log("PDFViewerApplication.markerManageMode=" + PDFViewerApplication.markerManageMode);
+    //PDFViewerApplication.forceRendering();
+    //PDFViewerApplication.pdfViewer.forceRendering(PDFViewerApplication.pdfViewer._getVisiblePages());
+    //全体を再描画
+    //alert("markerManageMode作動"); 
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  },
+
+  //★questionModeとして追加
+    webViewerQuestionMode() {
+    PDFViewerApplication.questionMode = !PDFViewerApplication.questionMode;
+    console.log("PDFViewerApplication.questionMode=" + PDFViewerApplication.questionMode);
+    //alert("questionMode作動");  //テスト用のアラート表示
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  },
+
+  //questionManageModeとして追加
+  webViewerQuestionManageMode(){
+    PDFViewerApplication.questionManageMode = !PDFViewerApplication.questionManageMode;
+    console.log("PDFViewerApplication.questionManageMode=" + PDFViewerApplication.questionManageMode);
+    //PDFViewerApplication.forceRendering();
+    //PDFViewerApplication.pdfViewer.forceRendering(PDFViewerApplication.pdfViewer._getVisiblePages());
+    //全体を再描画
+    //alert("questionManageMode作動"); 
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  },
+  //★からここまで追加
+  
+
   bindEvents() {
     const { eventBus, _boundEvents } = this;
 
     _boundEvents.beforePrint = this.beforePrint.bind(this);
     _boundEvents.afterPrint = this.afterPrint.bind(this);
+    
+    //markermode
+    eventBus._on("markermode", webViewerMarkerMode);
+    //markermanagemode
+    eventBus._on("markermanagemode", webViewerMarkerManageMode);  
+    //questionmode
+    eventBus._on("questionmode", webViewerQuestionMode);  //追加
+    //questionmanagemode
+    eventBus._on("questionmanagemode", webViewerQuestionManageMode);  //追加
+
 
     eventBus._on("resize", webViewerResize);
     eventBus._on("hashchange", webViewerHashchange);
@@ -2081,6 +2377,15 @@ const PDFViewerApplication = {
       throw new Error("Not implemented: unbindEvents");
     }
     const { eventBus, _boundEvents } = this;
+        //markermode
+        eventBus._off("markermode", webViewerMarkerMode);
+        //markermanagemode
+        eventBus._off("markermanageode", webViewerMarkerManageMode);
+        //questionmode
+        eventBus._off("questionmode", webViewerQuestionMode); //追加
+        //questionmanagemode
+        eventBus._off("questionmanagemode", webViewerQuestionManageMode); //追加。
+
 
     eventBus._off("resize", webViewerResize);
     eventBus._off("hashchange", webViewerHashchange);
@@ -2468,6 +2773,33 @@ function webViewerResize() {
   pdfViewer.update();
 }
 
+
+//markerMode
+function webViewerMarkerMode(){
+  PDFViewerApplication.webViewerMarkerMode();
+  console.log("PDFViewerApplication.markerMode="+PDFViewerApplication.markerMode);
+}
+
+//markerMode
+function webViewerMarkerManageMode(){
+  PDFViewerApplication.webViewerMarkerManageMode();
+  console.log("PDFViewerApplication.markerManageMode="+PDFViewerApplication.markerManageMode);
+}
+
+//★追加
+//questionMode
+function webViewerQuestionMode(){
+  PDFViewerApplication.webViewerQuestionMode();
+  console.log("PDFViewerApplication.questionMode="+PDFViewerApplication.questionMode);
+}
+
+//questionManageMode
+function webViewerQuestionManageMode(){
+  PDFViewerApplication.webViewerQuestionManageMode();
+  console.log("PDFViewerApplication.questionManageMode="+PDFViewerApplication.questionManageMode);
+}
+//★からここまで追加
+
 function webViewerHashchange(evt) {
   const hash = evt.hash;
   if (!hash) {
@@ -2640,7 +2972,12 @@ function webViewerRotationChanging(evt) {
 function webViewerPageChanging({ pageNumber, pageLabel }) {
   PDFViewerApplication.toolbar?.setPageNumber(pageNumber, pageLabel);
   PDFViewerApplication.secondaryToolbar?.setPageNumber(pageNumber);
-
+  const pages = PDFViewerApplication.pdfViewer._getVisiblePages().views;
+  let pageNums = "";
+  for(const p of pages){
+    pageNums = pageNums +(p.id + ",")
+  }
+  PDFViewerApplication.sendLog("ViewPage", PDFViewerApplication.materialId, pageNumber ,"RenderedPages:" + pageNums);
   if (PDFViewerApplication.pdfSidebar?.visibleView === SidebarView.THUMBS) {
     PDFViewerApplication.pdfThumbnailViewer?.scrollThumbnailIntoView(
       pageNumber
