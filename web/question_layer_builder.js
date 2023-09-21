@@ -298,6 +298,7 @@ class QuestionLayerBuilder {
         return;
       }
       const end = div.querySelector(".endOfContent");
+      
       this.mouseDownTarget = evt.target;
       console.log(this.mouseDownTarget);
       //this.mouseDownX = 100*(evt.offsetX/div.offsetWidth);

@@ -855,6 +855,12 @@ class PDFPageView {
         this.#renderTextLayer();
       }
     }
+
+    /* 
+    2023/9/22 追加
+    ここにhighlightLayerとquestionLayerをrenderする命令を挿入
+    #renderHighlightLayer()やrenderQuestionLayer()もしかるべき場所に作る必要がある
+    */
   }
 
 
@@ -936,8 +942,8 @@ class PDFPageView {
 
       this.textLayer = new TextLayerBuilder({
         viewport: this.viewport,
-        pageIndex: this.id - 1,
         highlighter: this._textHighlighter,
+        pageIndex: this.id - 1,
         accessibilityManager: this._accessibilityManager,
         isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
         enablePermissions:

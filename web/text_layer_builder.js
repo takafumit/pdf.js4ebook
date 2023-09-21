@@ -238,6 +238,9 @@ class TextLayerBuilder {
 
     div.addEventListener("mousedown", evt => {
       const end = div.querySelector(".endOfContent");
+      this.mouseDownTarget = evt.target;//追加
+      this.mouseDownX = 100*(evt.offsetX/div.offsetWidth);//追加
+      this.mouseDownY = 100*(evt.offsetY/div.offsetHeight);//追加
       if (!end) {
         return;
       }

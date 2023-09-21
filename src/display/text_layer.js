@@ -154,15 +154,18 @@ function getAscent(fontFamily, isOffscreenCanvasSupported) {
   return DEFAULT_FONT_ASCENT;
 }
 
-function appendText(task, geom, styles) {
+function appendText(task, i, geom, styles) {
   // Initialize all used properties to keep the caches monomorphic.
   const textDiv = document.createElement("span");
+  // textDiv.id = "text:"+i;
+  // textDiv.name = "text:"+i;
   const textDivProperties = {
     angle: 0,
     canvasWidth: 0,
     hasText: geom.str !== "",
     hasEOL: geom.hasEOL,
     fontSize: 0,
+
   };
   task._textDivs.push(textDiv);
 
@@ -201,6 +204,9 @@ function appendText(task, geom, styles) {
   divStyle.fontFamily = style.fontFamily;
 
   textDivProperties.fontSize = fontHeight;
+
+  textDiv.setAttribute("id", "text:"+i); //追加
+  textDiv.setAttribute("name", "text:"+i); //追加
 
   // Keeps screen readers from pausing on every new text span.
   textDiv.setAttribute("role", "presentation");
@@ -245,7 +251,7 @@ function appendText(task, geom, styles) {
 }
 
 function layout(params) {
-  const { div, scale, properties, ctx, prevFontSize, prevFontFamily } = params;
+  const { div, scale, id, name, properties, ctx, prevFontSize, prevFontFamily } = params;
   const { style } = div;
   let transform = "";
   if (properties.canvasWidth !== 0 && properties.hasText) {
@@ -322,6 +328,8 @@ class TextLayerRenderTask {
       prevFontSize: null,
       prevFontFamily: null,
       div: null,
+      id: "id",
+      name: "name",
       scale: viewport.scale * (globalThis.devicePixelRatio || 1),
       properties: null,
       ctx: getCtx(0, isOffscreenCanvasSupported),
@@ -330,6 +338,8 @@ class TextLayerRenderTask {
     this._transform = [1, 0, 0, -1, -pageX, pageY + pageHeight];
     this._pageWidth = pageWidth;
     this._pageHeight = pageHeight;
+
+    this._textId = 0; //追加
 
     setLayerDimensions(container, viewport);
 
@@ -390,7 +400,8 @@ class TextLayerRenderTask {
         continue;
       }
       this._textContentItemsStr.push(item.str);
-      appendText(this, item, styleCache);
+      appendText(this, this._textId+"", item, styleCache);
+      this._textId++;
     }
   }
 
