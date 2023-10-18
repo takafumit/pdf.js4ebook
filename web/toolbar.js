@@ -66,7 +66,12 @@ class Toolbar {
       { element: options.zoomOut, eventName: "zoomout" },
       { element: options.print, eventName: "print" },
       { element: options.download, eventName: "download" },
-      
+      { element: options.markerMode, eventName: "markermode" }, //追加
+      { element: options.markerManageMode, eventName: "markermanagemode" }, //追加
+      { element: options.questionMode, eventName: "questionmode" }, //追加
+      { element: options.questionManageMode, eventName: "questionmanagemode" }, //追加
+
+
       /* アノテーションモード無効化のためコメント
       {
         element: options.editorFreeTextButton,

@@ -14,15 +14,15 @@
  */
 
 // eslint-disable-next-line max-len
-/** @typedef {import("../src/display/display_utils").PageViewport} PageViewport */
-/** @typedef {import("../src/display/api").TextContent} TextContent */
-/** @typedef {import("./text_highlighter").TextHighlighter} TextHighlighter */
+/** @typedef {import("../src/display/display_utils.js").PageViewport} PageViewport */
+/** @typedef {import("../src/display/api.js").TextContent} TextContent */
+/** @typedef {import("./text_highlighter.js").TextHighlighter} TextHighlighter */
 // eslint-disable-next-line max-len
 /** @typedef {import("./text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 
 import { normalizeUnicode, renderTextLayer, updateTextLayer } from "pdfjs-lib";
 import { removeNullCharacters } from "./ui_utils.js";
-import { PDFViewerApplication } from "./app";
+import { PDFViewerApplication } from "./app.js";
 
 /**
  * @typedef {Object} TextLayerBuilderOptions
@@ -51,8 +51,8 @@ class HighlightLayerBuilder {
     highlights,
     pageIndex,
     viewport,
-    highlighter = null,
-    accessibilityManager = null,
+    //highlighter = null, //削除
+    // accessibilityManager = null,
     isOffscreenCanvasSupported = true,
     enablePermissions = false,
   }) {
@@ -64,17 +64,18 @@ class HighlightLayerBuilder {
     this.textDivs = [];
     this.textDivProperties = new WeakMap();
     this.textLayerRenderTask = null;
+    this.pageIdx = pageIndex;
     this.pageNumber = pageIndex + 1;
-    this.highlighter = highlighter;
+    //this.highlighter = highlighter; //削除
     this.viewport = viewport;
-    this.accessibilityManager = accessibilityManager;
+    //this.accessibilityManager = accessibilityManager;
     this.isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this.#enablePermissions = enablePermissions === true;
     this.mouseDownTarget = null;
     this.mouseDownX = -1;
     this.mouseDownY = -1;
     this.div = document.createElement("div");
-    this.div.className = "textLayer";
+    this.div.className = "highlightLayer";
     this.hide();
     this.mouseDownTarget = null;
     this.contextMenu = document.getElementById('conmenu');
@@ -82,15 +83,17 @@ class HighlightLayerBuilder {
     this.div.addEventListener('click',function (e){
       //メニューとノートエリアを非表示にさせる
       const conmenu = document.getElementById('conmenu');
-      conmenu.parentNode.removeChild(conmenu);
-      const notearea = document.getElementById('notearea');
-      notearea.parentNode.removeChild(notearea);
+      if(conmenu.parentNode){
+        conmenu.parentNode.removeChild(conmenu);
+        const notearea = document.getElementById('notearea');
+        notearea.parentNode.removeChild(notearea);
+      }
     });
-    if(PDFViewerApplication.markerManageMode||PDFViewerApplication.questionManageMode){ //またはquestionManageModeがTrueの場合に変更
-      this.div.style.zIndex=1;
+    if(PDFViewerApplication.markerMode||PDFViewerApplication.markerManageMode){ //またはquestionManageModeがTrueの場合に変更
+      this.div.style.zIndex=4;
     }
     else{
-      this.div.style.zIndex=4;    //zIndex=3から4に変更
+      this.div.style.zIndex=1;    //zIndex=3から4に変更
     }
   }
   removeHighlight(pageIdx,highlight){
@@ -141,13 +144,14 @@ class HighlightLayerBuilder {
         });
         this.#scale = scale;
         this.#rotation = rotation;
+        this._renderHighlights(this.highlights);//追加
       }
       this.show();
       return;
     }
 
     this.cancel();
-    this.highlighter?.setTextMapping(this.textDivs, this.textContentItemsStr);
+    this.highlighter?.setTextMapping(this.textDivs, this.textContentItemsStr); 
     this.accessibilityManager?.setTextMapping(this.textDivs);
 
     this.textLayerRenderTask = renderTextLayer({
@@ -164,15 +168,18 @@ class HighlightLayerBuilder {
     this.#finishRendering();
     this.#scale = scale;
     this.#rotation = rotation;
+
+    this._renderHighlights(this.highlights);
+
     this.show();
-    this.accessibilityManager?.enable();
+    //this.accessibilityManager?.enable();
   }
 
   hide() {
     if (!this.div.hidden) {
       // We turn off the highlighter in order to avoid to scroll into view an
       // element of the text layer which could be hidden.
-      this.highlighter?.disable();
+      //this.highlighter?.disable(); //削除
       this.div.hidden = true;
     }
   }
@@ -180,7 +187,7 @@ class HighlightLayerBuilder {
   show() {
     if (this.div.hidden && this.renderingDone) {
       this.div.hidden = false;
-      this.highlighter?.enable();
+      //this.highlighter?.enable();//削除
     }
   }
 
@@ -192,8 +199,8 @@ class HighlightLayerBuilder {
       this.textLayerRenderTask.cancel();
       this.textLayerRenderTask = null;
     }
-    this.highlighter?.disable();
-    this.accessibilityManager?.disable();
+    //this.highlighter?.disable();//削除
+    //this.accessibilityManager?.disable();
     this.textContentItemsStr.length = 0;
     this.textDivs.length = 0;
     this.textDivProperties = new WeakMap();
@@ -209,7 +216,7 @@ class HighlightLayerBuilder {
 
   _renderHighlights(highlights) {
     const {
-      textLayerDiv,
+      textLayerDiv = this.div,
       findController,
       pageIdx,
       textContentItemsStr,
@@ -219,9 +226,9 @@ class HighlightLayerBuilder {
     } = this;
     console.log( "_renderHighlights: page="+pageIdx);
     
-    if (!this.renderingDone) {
-      return;
-    }
+    // if (!this.renderingDone) {
+    //   return;
+    // }
 
     const infinity = {
       divIdx: -1,
@@ -247,19 +254,38 @@ class HighlightLayerBuilder {
         console.log(divTransformX);
       }
 
+      //divのcloneを作成し，一時的にページに追加して諸々の値を計算する
+      const clone = div.cloneNode(true);
+      const style = clone.style;
+      style.position = "absolute";
+      style.visibility = "hidden";
+      style.display = "block";
+      document.body.appendChild(clone);
+
       //オフセットを計算
       const offsetRange = document.createRange();
-      offsetRange.setStart(div.firstChild, 0);
-      offsetRange.setEnd(div.firstChild, fromOffset);
-      const offsetRect = offsetRange.getBoundingClientRect(); console.log("offset t=" + offsetRect.top + ", l=" + offsetRect.left + ", w=" + offsetRect.width + ", h=" + offsetRect.height);
+      offsetRange.setStart(clone.firstChild, 0);
+      offsetRange.setEnd(clone.firstChild, fromOffset);
+      const offsetRect = offsetRange.getBoundingClientRect(); 
+      console.log("offset t=" + offsetRect.top + ", l=" + offsetRect.left + ", w=" + offsetRect.width + ", h=" + offsetRect.height);
       const offset = (offsetRect.width / divTransformX);
 
 
       //ハイライト対象の矩形を取得
+
+      const rect = clone.getBoundingClientRect();
       const range = document.createRange();
-      range.setStart(div.firstChild, fromOffset);
-      range.setEnd(div.firstChild, toOffset);
+      range.setStart(clone.firstChild, fromOffset);
+      range.setEnd(clone.firstChild, toOffset);
       const textRect = range.getBoundingClientRect();
+
+      //cloneを削除する
+      document.body.removeChild(clone);
+
+      // const range = document.createRange();
+      // range.setStart(div.firstChild, fromOffset);
+      // range.setEnd(div.firstChild, toOffset);
+      // const textRect = range.getBoundingClientRect();
       
 
       //ハイライトdivを作成してテキストに追加

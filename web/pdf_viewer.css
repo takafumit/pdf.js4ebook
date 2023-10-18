@@ -16,6 +16,88 @@
 @import url(annotation_layer_builder.css);
 @import url(xfa_layer_builder.css);
 @import url(annotation_editor_layer_builder.css);
+@import url(highlight_layer_builder.css);
+@import url(question_layer_builder.css);
+
+/*******************/
+
+
+.toolbarButton.markerMode-yes-no + label {
+  padding: 2px;
+}
+.toolbarButton.markerMode-yes-no + label:before,
+.toolbarButton.markerMode-yes-no + label:after {
+  display: block;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width:28px;
+  height:28px;
+  color: rgb(0, 0, 0);
+  font-family: "Roboto Slab", serif;
+  font-size: 15px;
+  text-align: center;
+  /*line-height: 60px;*/
+}
+.toolbarButton.markerMode-yes-no + label:before {
+  background-color: #aaaaaa;
+  content: attr(data-off);
+  transition: transform 0.5s;
+  backface-visibility: hidden;
+}
+.toolbarButton.markerMode-yes-no + label:after {
+  background-color: #8ce196;
+  content: attr(data-on);
+  transition: transform 0.5s;
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+}
+.toolbarButton.markerMode-yes-no:checked + label:before {
+  transform: rotateY(180deg);
+}
+.toolbarButton.markerMode-yes-no:checked + label:after {
+  transform: rotateY(0);
+}
+
+
+
+.toolbarButton.markerManageMode-yes-no + label {
+  padding: 2px;
+}
+.toolbarButton.markerManageMode-yes-no + label:before,
+.toolbarButton.markerManageMode-yes-no + label:after {
+  display: block;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width:28px;
+  height:28px;
+  color: rgb(0, 0, 0);
+  font-family: "Roboto Slab", serif;
+  font-size: 15px;
+  text-align: center;
+  /*line-height: 60px;*/
+}
+.toolbarButton.markerManageMode-yes-no + label:before {
+  background-color: #aaaaaa;
+  content: attr(data-off);
+  transition: transform 0.5s;
+  backface-visibility: hidden;
+}
+.toolbarButton.markerManageMode-yes-no + label:after {
+  background-color: #ff6f6f;
+  content: attr(data-on);
+  transition: transform 0.5s;
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+}
+.toolbarButton.markerManageMode-yes-no:checked + label:before {
+  transform: rotateY(180deg);
+}
+.toolbarButton.markerManageMode-yes-no:checked + label:after {
+  transform: rotateY(0);
+}
+/*************************/
 
 :root {
   --viewer-container-height: 0;

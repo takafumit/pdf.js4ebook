@@ -73,7 +73,7 @@ class QuestionLayerBuilder {
     this.mouseDownX = -1;
     this.mouseDownY = -1;
     this.div = document.createElement("div");
-    this.div.className = "textLayer";
+    this.div.className = "questionLayer";
     this.hide();
     this.mouseDownTarget = null;
     this.contextMenu = document.getElementById('conmenu');

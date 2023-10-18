@@ -210,6 +210,8 @@ class PDFPageView {
     this.zoomLayer = null;
     this.xfaLayer = null;
     this.structTreeLayer = null;
+    //キャッシュチェック
+
 
     const div = document.createElement("div");
     div.className = "page";
@@ -436,6 +438,41 @@ class PDFPageView {
     this.#renderStructTreeLayer();
   }
 
+  //追加
+  async #renderHighlightLayer() {
+    const { pdfPage, highlightLayer, viewport } = this;
+    if (!highlightLayer) {
+      return;
+    }
+
+    let error = null;
+    try {
+      if (!highlightLayer.renderingDone) {
+        const readableStream = pdfPage.streamTextContent({
+          includeMarkedContent: true,
+          disableNormalization: true,
+        });
+        highlightLayer.setTextContentSource(readableStream);
+      }
+      await highlightLayer.render(viewport);
+    } catch (ex) {
+      if (ex instanceof AbortException) {
+        return;
+      }
+      console.error(`#renderHighlightLayer: "${ex}".`);
+      error = ex;
+    }
+
+    // this.eventBus.dispatch("textlayerrendered", {
+    //   source: this,
+    //   pageNumber: this.id,
+    //   numTextDivs: textLayer.numTextDivs,
+    //   error,
+    // });
+
+    this.#renderStructTreeLayer();
+  }
+
 
 
   /**
@@ -516,7 +553,9 @@ class PDFPageView {
       annotationEditorLayerNode =
         (keepAnnotationEditorLayer && this.annotationEditorLayer?.div) || null,
       xfaLayerNode = (keepXfaLayer && this.xfaLayer?.div) || null,
-      textLayerNode = (keepTextLayer && this.textLayer?.div) || null;
+      textLayerNode = (keepTextLayer && this.textLayer?.div) || null,
+      highlightLayerNode=(keepTextLayer && this.highlightLayer?.div)|| null, //追加
+      questionLayerNode=(keepTextLayer && this.questionLayer?.div)|| null; //追加
     for (let i = childNodes.length - 1; i >= 0; i--) {
       const node = childNodes[i];
       switch (node) {
@@ -525,6 +564,8 @@ class PDFPageView {
         case annotationEditorLayerNode:
         case xfaLayerNode:
         case textLayerNode:
+        case highlightLayerNode://追加
+        case questionLayerNode://追加
           continue;
       }
       node.remove();
@@ -547,6 +588,7 @@ class PDFPageView {
     if (textLayerNode) {
       this.textLayer.hide();
     }
+
     this.structTreeLayer?.hide();
 
     if (!zoomLayerNode) {
@@ -582,6 +624,8 @@ class PDFPageView {
     optionalContentConfigPromise = null,
     drawingDelay = -1,
   }) {
+
+    console.log("pdf_page_view update()")
     this.scale = scale || this.scale;
     if (typeof rotation === "number") {
       this.rotation = rotation; // The rotation may be zero.
@@ -852,6 +896,7 @@ class PDFPageView {
         this.textLayer.hide();
         this.structTreeLayer?.hide();
       } else if (redrawTextLayer) {
+        this.#renderHighlightLayer();//追加
         this.#renderTextLayer();
       }
     }
@@ -1118,7 +1163,11 @@ class PDFPageView {
         showCanvas?.(true);
         await this.#finishRenderTask(renderTask);
 
+        this.#renderHighlightLayer();
         this.#renderTextLayer();
+        
+
+        //renderHighlightLayerの追加が必要
 
         if (this.annotationLayer) {
           await this.#renderAnnotationLayer();
@@ -1202,6 +1251,76 @@ class PDFPageView {
       ? this.canvas
       : null;
   }
+
+  /**追加 */
+
+  addHighlight(highlight){
+    //console.log("PDFPageView.addHighlight", highlight);
+   // alert("pdf_page_biewのaddHighlight:",highlight);  //確認用に追加
+    PDFViewerApplication.highlights.push(highlight);
+
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  }
+
+  removeHighlight(highlight){
+    const highlights = PDFViewerApplication.highlights; 
+    let i = 0;
+    for(let ii = highlights.length ; i<ii ; i++){
+      if(highlights[i].id == highlight.id) break;
+    }
+    PDFViewerApplication.removeHighlight(highlight.id);
+    PDFViewerApplication.highlights.splice(i,1);
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  }
+
+/*★Question用に追加 */
+  addQuestion(question){
+    //console.log("PDFPageView.addHighlight", highlight);
+    //alert("pdf_page_biewのQuestion:"+question); 
+    PDFViewerApplication.questions.push(question); //app.jsのPDFViewerApplicationのquestionの配列にpushする
+
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  }
+
+  removeQuestion(question){
+    const questions = PDFViewerApplication.questions; 
+    let i = 0;
+    for(let ii = questions.length ; i<ii ; i++){
+      if(questions[i].id == question.id) break;
+    }
+    PDFViewerApplication.removeQuestion(question.id);
+    PDFViewerApplication.questions.splice(i,1);
+    PDFViewerApplication.pdfViewer._pages.forEach(element => {
+      element.update(0,null,null);
+    }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
+  }
+/*★からここまで追加*/
+
+
+  updateNote(highlight, note){  
+    const highlights = PDFViewerApplication.highlights;
+    let i = 0;
+    for(let ii = highlights.length ; i<ii ; i++){
+      if(highlights[i].id == highlight.id) break;
+    }
+    PDFViewerApplication.highlights[i].note = note;
+    
+  }
+   /**追加 */
 }
 
 export { PDFPageView };
