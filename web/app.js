@@ -2174,6 +2174,19 @@ const PDFViewerApplication = {
   webViewerMarkerMode() {
     PDFViewerApplication.markerMode = !PDFViewerApplication.markerMode;
     console.log("PDFViewerApplication.markerMode=" + PDFViewerApplication.markerMode);
+    
+    // PDFViewerApplication.pdfViewer._pages.forEach(element => {
+    //   element.cssTransform({
+    //     target: element.canvas,
+    //     redrawAnnotationLayer: true,
+    //     redrawAnnotationEditorLayer: true,
+    //     redrawXfaLayer: true,
+    //     redrawTextLayer: true,
+    //     hideTextLayer: false,
+    //   });
+    // }); 
+    const c = document.getElementById("viewerContainer");
+    c.dispatchEvent(new Event("scroll"));
     //alert("markerMode作動");  //テスト用のアラート表示
   },
 
@@ -2181,42 +2194,86 @@ const PDFViewerApplication = {
   webViewerMarkerManageMode(){
     PDFViewerApplication.markerManageMode = !PDFViewerApplication.markerManageMode;
     console.log("PDFViewerApplication.markerManageMode=" + PDFViewerApplication.markerManageMode);
+    const visiblePages = PDFViewerApplication.pdfViewer._getVisiblePages();
+    const views = visiblePages.views;
+    views.forEach( e =>{
+      const page = e.view;
+      if(PDFViewerApplication.markerManageMode){
+        page.highlightLayer.div.style.zIndex = 4;
+        page.textLayer.div.style.zIndex = 1;
+      }
+      else{
+        page.highlightLayer.div.style.zIndex = 1;
+        page.textLayer.div.style.zIndex = 4;
+      }
+
+    });
+    //PDFViewerApplication.pdfViewer.forceRendering();
     //PDFViewerApplication.forceRendering();
     //PDFViewerApplication.pdfViewer.forceRendering(PDFViewerApplication.pdfViewer._getVisiblePages());
     //全体を再描画
     //alert("markerManageMode作動"); 
-    PDFViewerApplication.pdfViewer._pages.forEach(element => {
-      element.update(0,null,null);
-    }); 
-    const c = document.getElementById("viewerContainer");
-    c.dispatchEvent(new Event("scroll"));
+    //PDFViewerApplication.pdfViewer.update();
+    // PDFViewerApplication.pdfViewer._pages.forEach(element => {
+    //   element.cssTransform({
+    //     target: element.canvas,
+    //     redrawAnnotationLayer: true,
+    //     redrawAnnotationEditorLayer: true,
+    //     redrawXfaLayer: true,
+    //     redrawTextLayer: true,
+    //     hideTextLayer: false,
+    //   });
+    // }); 
+    // const c = document.getElementById("viewerContainer");
+    // c.dispatchEvent(new Event("scroll"));
+    // PDFViewerApplication.pdfViewer.draw();
   },
 
   //★questionModeとして追加
     webViewerQuestionMode() {
     PDFViewerApplication.questionMode = !PDFViewerApplication.questionMode;
     console.log("PDFViewerApplication.questionMode=" + PDFViewerApplication.questionMode);
+    //PDFViewerApplication.pdfViewer.forceRendering();
     //alert("questionMode作動");  //テスト用のアラート表示
-    PDFViewerApplication.pdfViewer._pages.forEach(element => {
-      element.update(0,null,null);
-    }); 
-    const c = document.getElementById("viewerContainer");
-    c.dispatchEvent(new Event("scroll"));
+    //PDFViewerApplication.pdfViewer.update();
+    // PDFViewerApplication.pdfViewer._pages.forEach(element => {
+    //   element.cssTransform({
+    //     target: element.canvas,
+    //     redrawAnnotationLayer: true,
+    //     redrawAnnotationEditorLayer: true,
+    //     redrawXfaLayer: true,
+    //     redrawTextLayer: true,
+    //     hideTextLayer: false,
+    //   });
+    // }); 
+    // const c = document.getElementById("viewerContainer");
+    // c.dispatchEvent(new Event("scroll"));
   },
 
   //questionManageModeとして追加
   webViewerQuestionManageMode(){
     PDFViewerApplication.questionManageMode = !PDFViewerApplication.questionManageMode;
     console.log("PDFViewerApplication.questionManageMode=" + PDFViewerApplication.questionManageMode);
+    //PDFViewerApplication.pdfViewer.forceRendering();
+
     //PDFViewerApplication.forceRendering();
     //PDFViewerApplication.pdfViewer.forceRendering(PDFViewerApplication.pdfViewer._getVisiblePages());
     //全体を再描画
     //alert("questionManageMode作動"); 
-    PDFViewerApplication.pdfViewer._pages.forEach(element => {
-      element.update(0,null,null);
-    }); 
-    const c = document.getElementById("viewerContainer");
-    c.dispatchEvent(new Event("scroll"));
+    // PDFViewerApplication.pdfViewer.update();
+    // PDFViewerApplication.pdfViewer._pages.forEach(element => {
+    //   element.cssTransform({
+    //     target: element.canvas,
+    //     redrawAnnotationLayer: true,
+    //     redrawAnnotationEditorLayer: true,
+    //     redrawXfaLayer: true,
+    //     redrawTextLayer: true,
+    //     hideTextLayer: false,
+    //   });
+    // }); 
+    // const c = document.getElementById("viewerContainer");
+    // c.dispatchEvent(new Event("scroll"));
+    // PDFViewerApplication.pdfViewer.draw();
   },
   //★からここまで追加
   

@@ -167,7 +167,7 @@ class PDFPageView {
     this.eventBus = options.eventBus;
     this.renderingQueue = options.renderingQueue;
     this.textLayerFactory = options.textLayerFactory;
-    this.highlightLayerFactory = options.highlightLayerFactory;
+    this.highlightLayerFactory = options.highlightLayerFactory; //追加
     this.questionLayerFactory = options.questionLayerFactory; //追加
     this.annotationLayerFactory = options.annotationLayerFactory;
     this.annotationEditorLayerFactory = options.annotationEditorLayerFactory;
@@ -588,6 +588,12 @@ class PDFPageView {
     if (textLayerNode) {
       this.textLayer.hide();
     }
+    if (highlightLayerNode) {
+      this.highlightLayer.hide();
+    }
+    if (questionLayerNode) {
+      this.questionLayer.hide();
+    }
 
     this.structTreeLayer?.hide();
 
@@ -764,6 +770,16 @@ class PDFPageView {
       this.textLayer.cancel();
       this.textLayer = null;
     }
+
+    if (this.hihglightLayer && (!keepTextLayer || !this.textLayer.div)) {
+      this.highlightLayer.cancel();
+      this.highlightLayer = null;
+    }
+    if (this.questionLayer && (!keepTextLayer || !this.textLayer.div)) {
+      this.questionLayer.cancel();
+      this.questionLayer = null;
+    }
+
     if (this.structTreeLayer && !this.textLayer) {
       this.structTreeLayer = null;
     }
@@ -894,10 +910,13 @@ class PDFPageView {
     if (this.textLayer) {
       if (hideTextLayer) {
         this.textLayer.hide();
+        this.highlightLayer.hide();
+        this.questionLayer.hide();
         this.structTreeLayer?.hide();
       } else if (redrawTextLayer) {
+        console.log("PDFPageView this.#renderHighlightLayer(); this.#renderTextLayer()" ) 
         this.#renderHighlightLayer();//追加
-        this.#renderTextLayer();
+        this.#renderTextLayer(); //追加 
       }
     }
 
@@ -1000,9 +1019,8 @@ class PDFPageView {
 
     //2023-08-26 ここにhighlightLayerとquestionlayerを追加
     if (
-      !this.highlightLayer &&
-      this.#textLayerMode !== TextLayerMode.DISABLE &&
-      !pdfPage.isPureXfa
+      this.textLayer
+      //&& this.#textLayerMode !== TextLayerMode.DISABLE && !pdfPage.isPureXfa
     ) {
       this._accessibilityManager ||= new TextAccessibilityManager();
 
@@ -1020,9 +1038,8 @@ class PDFPageView {
     }
 
     if (
-      !this.questionLayer &&
-      this.#textLayerMode !== TextLayerMode.DISABLE &&
-      !pdfPage.isPureXfa
+      this.textLayer
+       //&& this.#textLayerMode !== TextLayerMode.DISABLE && !pdfPage.isPureXfa
     ) {
       this._accessibilityManager ||= new TextAccessibilityManager();
 
@@ -1163,6 +1180,7 @@ class PDFPageView {
         showCanvas?.(true);
         await this.#finishRenderTask(renderTask);
 
+        console.log("PDFPageView this.#renderHighlightLayer(); this.#renderTextLayer()" ) 
         this.#renderHighlightLayer();
         this.#renderTextLayer();
         

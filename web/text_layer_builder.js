@@ -73,10 +73,10 @@ class TextLayerBuilder {
     this.div.className = "textLayer";
     this.hide();
     if(PDFViewerApplication.markerManageMode||PDFViewerApplication.questionManageMode){ //またはquestionManageModeがTrueの場合に変更
-      this.div.style.zIndex=1;
+      this.div.style.zIndex='1';
     }
     else{
-      this.div.style.zIndex=4;    //zIndex=3から4に変更
+      this.div.style.zIndex='4';    //zIndex=3から4に変更
     }
   }
 
