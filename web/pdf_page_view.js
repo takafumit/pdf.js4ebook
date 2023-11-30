@@ -156,6 +156,7 @@ class PDFPageView {
     this.#textLayerMode = options.textLayerMode ?? TextLayerMode.ENABLE;
     this.#annotationMode =
       options.annotationMode ?? AnnotationMode.ENABLE_FORMS;
+      console.log("pdf_page_view.js this.#annotationMode: "+this.#annotationMode)
     this.imageResourcesPath = options.imageResourcesPath || "";
     this.isOffscreenCanvasSupported =
       options.isOffscreenCanvasSupported ?? true;
