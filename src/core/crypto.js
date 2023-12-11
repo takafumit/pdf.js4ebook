@@ -1418,14 +1418,14 @@ class CipherTransform {
   }
 }
 
-const CipherTransformFactory = (function CipherTransformFactoryClosure() {
-  const defaultPasswordBytes = new Uint8Array([
+class CipherTransformFactory {
+  static #defaultPasswordBytes = new Uint8Array([
     0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41, 0x64, 0x00, 0x4e, 0x56,
     0xff, 0xfa, 0x01, 0x08, 0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80,
     0x2f, 0x0c, 0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a,
   ]);
 
-  function createEncryptionKey20(
+  #createEncryptionKey20(
     revision,
     password,
     ownerPassword,
@@ -1471,7 +1471,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     return null;
   }
 
-  function prepareKeyData(
+  #prepareKeyData(
     fileId,
     password,
     ownerPassword,
@@ -1494,7 +1494,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     }
     j = 0;
     while (i < 32) {
-      hashData[i++] = defaultPasswordBytes[j++];
+      hashData[i++] = CipherTransformFactory.#defaultPasswordBytes[j++];
     }
     // as now the padded password in the hashData[0..i]
     for (j = 0, n = ownerPassword.length; j < n; ++j) {
@@ -1525,7 +1525,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
 
     if (revision >= 3) {
       for (i = 0; i < 32; ++i) {
-        hashData[i] = defaultPasswordBytes[i];
+        hashData[i] = CipherTransformFactory.#defaultPasswordBytes[i];
       }
       for (j = 0, n = fileId.length; j < n; ++j) {
         hashData[i++] = fileId[j];
@@ -1548,7 +1548,9 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
       }
     } else {
       cipher = new ARCFourCipher(encryptionKey);
-      checkData = cipher.encryptBlock(defaultPasswordBytes);
+      checkData = cipher.encryptBlock(
+        CipherTransformFactory.#defaultPasswordBytes
+      );
       for (j = 0, n = checkData.length; j < n; ++j) {
         if (userPassword[j] !== checkData[j]) {
           return null;
@@ -1558,7 +1560,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     return encryptionKey;
   }
 
-  function decodeUserPassword(password, ownerPassword, revision, keyLength) {
+  #decodeUserPassword(password, ownerPassword, revision, keyLength) {
     const hashData = new Uint8Array(32);
     let i = 0;
     const n = Math.min(32, password.length);
@@ -1567,7 +1569,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     }
     let j = 0;
     while (i < 32) {
-      hashData[i++] = defaultPasswordBytes[j++];
+      hashData[i++] = CipherTransformFactory.#defaultPasswordBytes[j++];
     }
     let hash = calculateMD5(hashData, 0, i);
     const keyLengthInBytes = keyLength >> 3;
@@ -1595,9 +1597,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     return userPassword;
   }
 
-  const identityName = Name.get("Identity");
-
-  function buildObjectKey(num, gen, encryptionKey, isAes = false) {
+  #buildObjectKey(num, gen, encryptionKey, isAes = false) {
     const key = new Uint8Array(encryptionKey.length + 9);
     const n = encryptionKey.length;
     let i;
@@ -1619,45 +1619,42 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     return hash.subarray(0, Math.min(encryptionKey.length + 5, 16));
   }
 
-  function buildCipherConstructor(cf, name, num, gen, key) {
+  #buildCipherConstructor(cf, name, num, gen, key) {
     if (!(name instanceof Name)) {
       throw new FormatError("Invalid crypt filter name.");
     }
+const self = this;
     const cryptFilter = cf.get(name.name);
-    let cfm;
-    if (cryptFilter !== null && cryptFilter !== undefined) {
-      cfm = cryptFilter.get("CFM");
-    }
+    const cfm = cryptFilter?.get("CFM");
+    
     if (!cfm || cfm.name === "None") {
-      return function cipherTransformFactoryBuildCipherConstructorNone() {
+      return function () {
         return new NullCipher();
       };
     }
     if (cfm.name === "V2") {
-      return function cipherTransformFactoryBuildCipherConstructorV2() {
+      return function () {
         return new ARCFourCipher(
-          buildObjectKey(num, gen, key, /* isAes = */ false)
+          self.#buildObjectKey(num, gen, key, /* isAes = */ false)
         );
       };
     }
     if (cfm.name === "AESV2") {
-      return function cipherTransformFactoryBuildCipherConstructorAESV2() {
+      return function () {
         return new AES128Cipher(
-          buildObjectKey(num, gen, key, /* isAes = */ true)
+          self.#buildObjectKey(num, gen, key, /* isAes = */ true)
         );
       };
     }
     if (cfm.name === "AESV3") {
-      return function cipherTransformFactoryBuildCipherConstructorAESV3() {
+      return function () {
         return new AES256Cipher(key);
       };
     }
     throw new FormatError("Unknown crypto method");
   }
 
-  // eslint-disable-next-line no-shadow
-  class CipherTransformFactory {
-    constructor(dict, fileId, password) {
+      constructor(dict, fileId, password) {
       const filter = dict.get("Filter");
       if (!isName(filter, "Standard")) {
         throw new FormatError("unknown encryption method");
@@ -1667,10 +1664,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
       const algorithm = dict.get("V");
       if (
         !Number.isInteger(algorithm) ||
-        (algorithm !== 1 &&
-          algorithm !== 2 &&
-          algorithm !== 4 &&
-          algorithm !== 5)
+        (algorithm !== 1 && algorithm !== 2 && algorithm !== 4 && algorithm !== 5)
       ) {
         throw new FormatError("unsupported encryption algorithm");
       }
@@ -1698,11 +1692,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
           }
         }
       }
-      if (
-        !Number.isInteger(keyLength) ||
-        keyLength < 40 ||
-        keyLength % 8 !== 0
-      ) {
+      if (!Number.isInteger(keyLength) || keyLength < 40 || keyLength % 8 !== 0) {
         throw new FormatError("invalid key length");
       }
 
@@ -1736,7 +1726,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
 
       let encryptionKey;
       if (algorithm !== 5) {
-        encryptionKey = prepareKeyData(
+        encryptionKey = this.#prepareKeyData(
           fileIdBytes,
           passwordBytes,
           ownerPassword,
@@ -1755,7 +1745,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
         const ownerEncryption = stringToBytes(dict.get("OE"));
         const userEncryption = stringToBytes(dict.get("UE"));
         const perms = stringToBytes(dict.get("Perms"));
-        encryptionKey = createEncryptionKey20(
+        encryptionKey = this.#createEncryptionKey20(
           revision,
           passwordBytes,
           ownerPassword,
@@ -1777,13 +1767,13 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
         );
       } else if (!encryptionKey && password) {
         // Attempting use the password as an owner password
-        const decodedPassword = decodeUserPassword(
+        const decodedPassword = this.#decodeUserPassword(
           passwordBytes,
           ownerPassword,
           revision,
           keyLength
         );
-        encryptionKey = prepareKeyData(
+        encryptionKey = this.#prepareKeyData(
           fileIdBytes,
           decodedPassword,
           ownerPassword,
@@ -1814,8 +1804,8 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
           cf.suppressEncryption = true;
         }
         this.cf = cf;
-        this.stmf = dict.get("StmF") || identityName;
-        this.strf = dict.get("StrF") || identityName;
+        this.stmf = dict.get("StmF") || Name.get("Identity");
+        this.strf = dict.get("StrF") || Name.get("Identity");
         this.eff = dict.get("EFF") || this.stmf;
       }
     }
@@ -1823,14 +1813,14 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
     createCipherTransform(num, gen) {
       if (this.algorithm === 4 || this.algorithm === 5) {
         return new CipherTransform(
-          buildCipherConstructor(
+          this.#buildCipherConstructor(
             this.cf,
             this.strf,
             num,
             gen,
             this.encryptionKey
           ),
-          buildCipherConstructor(
+          this.#buildCipherConstructor(
             this.cf,
             this.stmf,
             num,
@@ -1840,21 +1830,18 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
         );
       }
       // algorithms 1 and 2
-      const key = buildObjectKey(
+      const key = this.#buildObjectKey(
         num,
         gen,
         this.encryptionKey,
         /* isAes = */ false
       );
-      const cipherConstructor = function buildCipherCipherConstructor() {
+      const cipherConstructor = function () {
         return new ARCFourCipher(key);
       };
       return new CipherTransform(cipherConstructor, cipherConstructor);
     }
   }
-
-  return CipherTransformFactory;
-})();
 
 export {
   AES128Cipher,

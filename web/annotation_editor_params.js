@@ -28,6 +28,8 @@ class AnnotationEditorParams {
   #bindListeners({
     editorFreeTextFontSize,
     editorFreeTextColor,
+    editorHighlightColor,
+    editorHighlightOpacity,
     editorInkColor,
     editorInkThickness,
     editorInkOpacity,
@@ -40,13 +42,17 @@ class AnnotationEditorParams {
         value,
       });
     };
-
-    /* viewer.htmlで無効にしているボタンに対するイベント追加のため，コメント
     editorFreeTextFontSize.addEventListener("input", function () {
       dispatchEvent("FREETEXT_SIZE", this.valueAsNumber);
     });
     editorFreeTextColor.addEventListener("input", function () {
       dispatchEvent("FREETEXT_COLOR", this.value);
+    });
+    editorHighlightColor.addEventListener("input", function () {
+      dispatchEvent("HIGHLIGHT_COLOR", this.value);
+    });
+    editorHighlightOpacity.addEventListener("input", function () {
+      dispatchEvent("HIGHLIGHT_OPACITY", this.valueAsNumber);
     });
     editorInkColor.addEventListener("input", function () {
       dispatchEvent("INK_COLOR", this.value);
@@ -61,9 +67,7 @@ class AnnotationEditorParams {
       dispatchEvent("CREATE");
     });
    
-    */
-
-    this.eventBus._on("annotationeditorparamschanged", evt => {
+      this.eventBus._on("annotationeditorparamschanged", evt => {
       for (const [type, value] of evt.details) {
         switch (type) {
           case AnnotationEditorParamsType.FREETEXT_SIZE:
@@ -71,6 +75,12 @@ class AnnotationEditorParams {
             break;
           case AnnotationEditorParamsType.FREETEXT_COLOR:
             editorFreeTextColor.value = value;
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_COLOR:
+            editorHighlightColor.value = value;
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_OPACITY:
+            editorHighlightOpacity.value = value;
             break;
           case AnnotationEditorParamsType.INK_COLOR:
             editorInkColor.value = value;

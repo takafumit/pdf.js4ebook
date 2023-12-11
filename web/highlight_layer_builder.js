@@ -14,9 +14,9 @@
  */
 
 // eslint-disable-next-line max-len
-/** @typedef {import("../src/display/display_utils.js").PageViewport} PageViewport */
-/** @typedef {import("../src/display/api.js").TextContent} TextContent */
-/** @typedef {import("./text_highlighter.js").TextHighlighter} TextHighlighter */
+/** @typedef {import("../src/display/display_utils").PageViewport} PageViewport */
+/** @typedef {import("../src/display/api").TextContent} TextContent */
+/** @typedef {import("./text_highlighter").TextHighlighter} TextHighlighter */
 // eslint-disable-next-line max-len
 /** @typedef {import("./text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 
@@ -173,7 +173,9 @@ class HighlightLayerBuilder {
     this.#finishRendering();
     this.#scale = scale;
     this.#rotation = rotation;
-    this.show();
+// Ensure that the textLayer is appended to the DOM *before* handling
+    // e.g. a pending search operation.
+    this.onAppend(this.div);
     this._removeHighlightBox();
     this._renderHighlights(this.highlights);
     //this.accessibilityManager?.enable();

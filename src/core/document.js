@@ -321,16 +321,7 @@ class Page {
     const savedDict = pageDict.get("Annots");
     pageDict.set("Annots", annotationsArray);
     const buffer = [];
-
-    let transform = null;
-    if (this.xref.encrypt) {
-      transform = this.xref.encrypt.createCipherTransform(
-        this.ref.num,
-        this.ref.gen
-      );
-    }
-
-    await writeObject(this.ref, pageDict, buffer, transform);
+    await writeObject(this.ref, pageDict, buffer, this.xref);
     if (savedDict) {
       pageDict.set("Annots", savedDict);
     }
@@ -435,9 +426,12 @@ class Page {
 
     let newAnnotationsPromise = Promise.resolve(null);
     if (newAnnotationsByPage) {
-      let imagePromises;
-      const newAnnotations = newAnnotationsByPage.get(this.pageIndex);
+            const newAnnotations = newAnnotationsByPage.get(this.pageIndex);
       if (newAnnotations) {
+        const annotationGlobalsPromise =
+          this.pdfManager.ensureDoc("annotationGlobals");
+        let imagePromises;
+
         // An annotation can contain a reference to a bitmap, but this bitmap
         // is defined in another annotation. So we need to find this annotation
         // and generate the bitmap.
@@ -476,11 +470,21 @@ class Page {
 
         deletedAnnotations = new RefSet();
         this.#replaceIdByRef(newAnnotations, deletedAnnotations, null);
-        newAnnotationsPromise = AnnotationFactory.printNewAnnotations(
-          partialEvaluator,
-          task,
-          newAnnotations,
-          imagePromises
+        
+        newAnnotationsPromise = annotationGlobalsPromise.then(
+          annotationGlobals => {
+            if (!annotationGlobals) {
+              return null;
+            }
+
+            return AnnotationFactory.printNewAnnotations(
+              annotationGlobals,
+              partialEvaluator,
+              task,
+              newAnnotations,
+              imagePromises
+            );
+          }
         );
       }
     }

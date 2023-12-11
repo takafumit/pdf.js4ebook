@@ -175,9 +175,12 @@ function appendText(task, i, geom, styles) {
   if (style.vertical) {
     angle += Math.PI / 2;
   }
+
+  const fontFamily =
+    (task._fontInspectorEnabled && style.fontSubstitution) || style.fontFamily;
   const fontHeight = Math.hypot(tx[2], tx[3]);
   const fontAscent =
-    fontHeight * getAscent(style.fontFamily, task._isOffscreenCanvasSupported);
+    fontHeight * getAscent(fontFamily, task._isOffscreenCanvasSupported);
 
   let left, top;
   if (angle === 0) {
@@ -201,7 +204,7 @@ function appendText(task, i, geom, styles) {
     divStyle.top = `${scaleFactorStr}${top.toFixed(2)}px)`;
   }
   divStyle.fontSize = `${scaleFactorStr}${fontHeight.toFixed(2)}px)`;
-  divStyle.fontFamily = style.fontFamily;
+  divStyle.fontFamily = fontFamily;
 
   textDivProperties.fontSize = fontHeight;
 
@@ -218,7 +221,8 @@ function appendText(task, i, geom, styles) {
   // `fontName` is only used by the FontInspector, and we only use `dataset`
   // here to make the font name available in the debugger.
   if (task._fontInspectorEnabled) {
-    textDiv.dataset.fontName = geom.fontName;
+    textDiv.dataset.fontName =
+      style.fontSubstitutionLoadedName || geom.fontName;
   }
   if (angle !== 0) {
     textDivProperties.angle = angle * (180 / Math.PI);
@@ -251,7 +255,7 @@ function appendText(task, i, geom, styles) {
 }
 
 function layout(params) {
-  const { div, scale, id, name, properties, ctx, prevFontSize, prevFontFamily } = params;
+  const { div, scale, properties, ctx, prevFontSize, prevFontFamily } = params;
   const { style } = div;
   let transform = "";
   if (properties.canvasWidth !== 0 && properties.hasText) {
@@ -467,34 +471,34 @@ class TextLayerRenderTask {
  * @returns {TextLayerRenderTask}
  */
 function renderTextLayer(params) {
-  if (
-    (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
-    !params.textContentSource &&
-    (params.textContent || params.textContentStream)
-  ) {
-    deprecated(
-      "The TextLayerRender `textContent`/`textContentStream` parameters " +
-        "will be removed in the future, please use `textContentSource` instead."
-    );
-    params.textContentSource = params.textContent || params.textContentStream;
-  }
-  if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC && !TESTING")) {
-    const { container, viewport } = params;
-    const style = getComputedStyle(container);
-    const visibility = style.getPropertyValue("visibility");
-    const scaleFactor = parseFloat(style.getPropertyValue("--scale-factor"));
+  // if (
+  //   (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
+  //   !params.textContentSource &&
+  //   (params.textContent || params.textContentStream)
+  // ) {
+  //   deprecated(
+  //     "The TextLayerRender `textContent`/`textContentStream` parameters " +
+  //       "will be removed in the future, please use `textContentSource` instead."
+  //   );
+  //   params.textContentSource = params.textContent || params.textContentStream;
+  // }
+  // if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC && !TESTING")) {
+  //   const { container, viewport } = params;
+  //   const style = getComputedStyle(container);
+  //   const visibility = style.getPropertyValue("visibility");
+  //   const scaleFactor = parseFloat(style.getPropertyValue("--scale-factor"));
 
-    if (
-      visibility === "visible" &&
-      (!scaleFactor || Math.abs(scaleFactor - viewport.scale) > 1e-5)
-    ) {
-      console.error(
-        "The `--scale-factor` CSS-variable must be set, " +
-          "to the same value as `viewport.scale`, " +
-          "either on the `container`-element itself or higher up in the DOM."
-      );
-    }
-  }
+  //   if (
+  //     visibility === "visible" &&
+  //     (!scaleFactor || Math.abs(scaleFactor - viewport.scale) > 1e-5)
+  //   ) {
+  //     console.error(
+  //       "The `--scale-factor` CSS-variable must be set, " +
+  //         "to the same value as `viewport.scale`, " +
+  //         "either on the `container`-element itself or higher up in the DOM."
+  //     );
+  //   }
+  // }
   const task = new TextLayerRenderTask(params);
   task._render();
   return task;

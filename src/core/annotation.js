@@ -67,6 +67,35 @@ import { OperatorList } from "./operator_list.js";
 import { XFAFactory } from "./xfa/factory.js";
 
 class AnnotationFactory {
+static createGlobals(pdfManager) {
+    return Promise.all([
+      pdfManager.ensureCatalog("acroForm"),
+      pdfManager.ensureDoc("xfaDatasets"),
+      pdfManager.ensureCatalog("structTreeRoot"),
+      // Only necessary to prevent the `Catalog.baseUrl`-getter, used
+      // with some Annotations, from throwing and thus breaking parsing:
+      pdfManager.ensureCatalog("baseUrl"),
+      // Only necessary to prevent the `Catalog.attachments`-getter, used
+      // with "GoToE" actions, from throwing and thus breaking parsing:
+      pdfManager.ensureCatalog("attachments"),
+    ]).then(
+      ([acroForm, xfaDatasets, structTreeRoot, baseUrl, attachments]) => {
+        return {
+          pdfManager,
+          acroForm: acroForm instanceof Dict ? acroForm : Dict.empty,
+          xfaDatasets,
+          structTreeRoot,
+          baseUrl,
+          attachments,
+        };
+      },
+      reason => {
+        warn(`createGlobals: "${reason}".`);
+        return null;
+      }
+    );
+  }
+
   /**
    * Create an `Annotation` object of the correct type for the given reference
    * to an annotation dictionary. This yields a promise that is resolved when
@@ -74,37 +103,36 @@ class AnnotationFactory {
    *
    * @param {XRef} xref
    * @param {Object} ref
-   * @param {PDFManager} pdfManager
+   * @params {Object} annotationGlobals
    * @param {Object} idFactory
-   * @param {boolean} collectFields
+   * @param {boolean} [collectFields]
+   * @param {Object} [pageRef]
    * @returns {Promise} A promise that is resolved with an {Annotation}
    *   instance.
    */
-  static create(xref, ref, pdfManager, idFactory, collectFields) {
-    return Promise.all([
-      pdfManager.ensureCatalog("acroForm"),
-      // Only necessary to prevent the `pdfManager.docBaseUrl`-getter, used
-      // with certain Annotations, from throwing and thus breaking parsing:
-      pdfManager.ensureCatalog("baseUrl"),
-      // Only necessary in the `Catalog.parseDestDictionary`-method,
-      // when parsing "GoToE" actions:
-      pdfManager.ensureCatalog("attachments"),
-      pdfManager.ensureDoc("xfaDatasets"),
-      collectFields ? this._getPageIndex(xref, ref, pdfManager) : -1,
-    ]).then(([acroForm, baseUrl, attachments, xfaDatasets, pageIndex]) =>
-      pdfManager.ensure(this, "_create", [
-        xref,
-        ref,
-        pdfManager,
-        idFactory,
-        acroForm,
-        attachments,
-        xfaDatasets,
-        collectFields,
-        pageIndex,
-      ])
-    );
+  static async create(
+    xref,
+    ref,
+    annotationGlobals,
+    idFactory,
+    collectFields,
+    pageRef
+  ) {
+    const pageIndex = collectFields
+      ? await this._getPageIndex(xref, ref, annotationGlobals.pdfManager)
+      : null;
+
+    return annotationGlobals.pdfManager.ensure(this, "_create", [
+      xref,
+      ref,
+      annotationGlobals,
+      idFactory,
+      collectFields,
+      pageIndex,
+      pageRef,
+    ]);
   }
+
 
   /**
    * @private
@@ -112,19 +140,18 @@ class AnnotationFactory {
   static _create(
     xref,
     ref,
-    pdfManager,
+    annotationGlobals,
     idFactory,
-    acroForm,
-    attachments = null,
-    xfaDatasets,
-    collectFields,
-    pageIndex = -1
+    collectFields = false,
+    pageIndex = null,
+    pageRef = null
   ) {
     const dict = xref.fetchIfRef(ref);
     if (!(dict instanceof Dict)) {
       return undefined;
     }
 
+const { acroForm, pdfManager } = annotationGlobals;
     const id =
       ref instanceof Ref ? ref.toString() : `annot_${idFactory.createObjId()}`;
 
@@ -141,15 +168,13 @@ class AnnotationFactory {
       dict,
       subtype,
       id,
-      pdfManager,
-      acroForm: acroFormDict,
-      attachments,
-      xfaDatasets,
+      annotationGlobals,
       collectFields,
       needAppearances:
-        !collectFields && acroFormDict.get("NeedAppearances") === true,
+        !collectFields && acroForm.get("NeedAppearances") === true,
       pageIndex,
       evaluatorOptions: pdfManager.evaluatorOptions,
+      pageRef,
     };
 
     switch (subtype) {
@@ -320,13 +345,7 @@ class AnnotationFactory {
             baseFont.set("Encoding", Name.get("WinAnsiEncoding"));
             const buffer = [];
             baseFontRef = xref.getNewTemporaryRef();
-            const transform = xref.encrypt
-              ? xref.encrypt.createCipherTransform(
-                  baseFontRef.num,
-                  baseFontRef.gen
-                )
-              : null;
-            await writeObject(baseFontRef, baseFont, buffer, transform);
+            await writeObject(baseFontRef, baseFont, buffer, xref);
             dependencies.push({ ref: baseFontRef, data: buffer.join("") });
           }
           promises.push(
@@ -335,6 +354,15 @@ class AnnotationFactory {
               annotation,
               dependencies,
               { evaluator, task, baseFontRef }
+            )
+          );
+          break;
+case AnnotationEditorType.HIGHLIGHT:
+          promises.push(
+            HighlightAnnotation.createNewAnnotation(
+              xref,
+              annotation,
+              dependencies
             )
           );
           break;
@@ -353,19 +381,13 @@ class AnnotationFactory {
             const buffer = [];
             if (smaskStream) {
               const smaskRef = xref.getNewTemporaryRef();
-              const transform = xref.encrypt
-                ? xref.encrypt.createCipherTransform(smaskRef.num, smaskRef.gen)
-                : null;
-              await writeObject(smaskRef, smaskStream, buffer, transform);
+              await writeObject(smaskRef, smaskStream, buffer, xref);
               dependencies.push({ ref: smaskRef, data: buffer.join("") });
               imageStream.dict.set("SMask", smaskRef);
               buffer.length = 0;
             }
             const imageRef = (image.imageRef = xref.getNewTemporaryRef());
-            const transform = xref.encrypt
-              ? xref.encrypt.createCipherTransform(imageRef.num, imageRef.gen)
-              : null;
-            await writeObject(imageRef, imageStream, buffer, transform);
+            await writeObject(imageRef, imageStream, buffer, xref);
             dependencies.push({ ref: imageRef, data: buffer.join("") });
             image.imageStream = image.smaskStream = null;
           }
@@ -388,6 +410,7 @@ class AnnotationFactory {
   }
 
   static async printNewAnnotations(
+    annotationGlobals,
     evaluator,
     task,
     annotations,
@@ -406,18 +429,40 @@ class AnnotationFactory {
       switch (annotation.annotationType) {
         case AnnotationEditorType.FREETEXT:
           promises.push(
-            FreeTextAnnotation.createNewPrintAnnotation(xref, annotation, {
+            FreeTextAnnotation.createNewPrintAnnotation(
+              annotationGlobals,
+              xref,
+              annotation,
+              {
               evaluator,
               task,
               evaluatorOptions: options,
-            })
+            }
+            )
+          );
+          break;
+        case AnnotationEditorType.HIGHLIGHT:
+          promises.push(
+            HighlightAnnotation.createNewPrintAnnotation(
+              annotationGlobals,
+              xref,
+              annotation,
+              {
+                evaluatorOptions: options,
+              }
+            )
           );
           break;
         case AnnotationEditorType.INK:
           promises.push(
-            InkAnnotation.createNewPrintAnnotation(xref, annotation, {
+            InkAnnotation.createNewPrintAnnotation(
+              annotationGlobals,
+              xref,
+              annotation,
+              {
               evaluatorOptions: options,
-            })
+            }
+            )
           );
           break;
         case AnnotationEditorType.STAMP:
@@ -434,10 +479,15 @@ class AnnotationFactory {
             image.imageStream = image.smaskStream = null;
           }
           promises.push(
-            StampAnnotation.createNewPrintAnnotation(xref, annotation, {
+            StampAnnotation.createNewPrintAnnotation(
+              annotationGlobals,
+              xref,
+              annotation,
+              {
               image,
               evaluatorOptions: options,
-            })
+            }
+            )
           );
           break;
       }
@@ -566,7 +616,7 @@ function getTransformMatrix(rect, bbox, matrix) {
 
 class Annotation {
   constructor(params) {
-    const { dict, xref } = params;
+    const { dict, xref, annotationGlobals } = params;
 
     this.setTitle(dict.get("T"));
     this.setContents(dict.get("Contents"));
@@ -593,6 +643,17 @@ class Annotation {
     // a HTML element for it.
     const isLocked = !!(this.flags & AnnotationFlag.LOCKED);
     const isContentLocked = !!(this.flags & AnnotationFlag.LOCKEDCONTENTS);
+
+    if (annotationGlobals.structTreeRoot) {
+      let structParent = dict.get("StructParent");
+      structParent =
+        Number.isInteger(structParent) && structParent >= 0 ? structParent : -1;
+
+      annotationGlobals.structTreeRoot.addAnnotationIdToPage(
+        params.pageRef,
+        structParent
+      );
+    }
 
     // Expose public properties using a data object.
     this.data = {
@@ -744,9 +805,11 @@ class Annotation {
   }
 
   setDefaultAppearance(params) {
+const { dict, annotationGlobals } = params;
+
     const defaultAppearance =
-      getInheritableProperty({ dict: params.dict, key: "DA" }) ||
-      params.acroForm.get("DA");
+      getInheritableProperty({ dict, key: "DA" }) ||
+      annotationGlobals.acroForm.get("DA");
     this._defaultAppearance =
       typeof defaultAppearance === "string" ? defaultAppearance : "";
     this.data.defaultAppearanceData = parseDefaultAppearance(
@@ -799,6 +862,17 @@ class Annotation {
    */
   setFlags(flags) {
     this.flags = Number.isInteger(flags) && flags > 0 ? flags : 0;
+if (
+      this.flags & AnnotationFlag.INVISIBLE &&
+      this.constructor.name !== "Annotation"
+    ) {
+      // From the pdf spec v1.7, section 12.5.3 (Annotation Flags):
+      //   If set, do not display the annotation if it does not belong to one of
+      //   the standard annotation types and no annotation handler is available.
+      //
+      // So we can remove the flag in case we have a known annotation type.
+      this.flags ^= AnnotationFlag.INVISIBLE;
+    }
   }
 
   /**
@@ -848,6 +922,9 @@ class Annotation {
    * @param {Array} lineEndings - The line endings array.
    */
   setLineEndings(lineEndings) {
+if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+      throw new Error("Not implemented: setLineEndings");
+    }
     this.lineEndings = ["None", "None"]; // The default values.
 
     if (Array.isArray(lineEndings) && lineEndings.length === 2) {

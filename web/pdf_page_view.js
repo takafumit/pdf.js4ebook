@@ -42,7 +42,8 @@ import {
 import { AnnotationEditorLayerBuilder } from "./annotation_editor_layer_builder.js";
 import { AnnotationLayerBuilder } from "./annotation_layer_builder.js";
 import { compatibilityParams } from "./app_options.js";
-import { NullL10n } from "./l10n_utils.js";
+import { DrawLayerBuilder } from "./draw_layer_builder.js";
+import { NullL10n } from "web-l10n_utils";
 import { SimpleLinkService } from "./pdf_link_service.js";
 import { StructTreeLayerBuilder } from "./struct_tree_layer_builder.js";
 import { TextAccessibilityManager } from "./text_accessibility.js";
@@ -82,17 +83,16 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  *   with user defined ones in order to improve readability in high contrast
  *   mode.
  * @property {IL10n} [l10n] - Localization service.
- * @property {function} [layerProperties] - The function that is used to lookup
+ * @property {Object} [layerProperties] - The object that is used to lookup
  *   the necessary layer-properties.
  */
 
 const MAX_CANVAS_PIXELS = compatibilityParams.maxCanvasPixels || 16777216;
 
-const DEFAULT_LAYER_PROPERTIES = () => {
-  if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("COMPONENTS")) {
-    return null;
-  }
-  return {
+const DEFAULT_LAYER_PROPERTIES =
+  typeof PDFJSDev === "undefined" || !PDFJSDev.test("COMPONENTS")
+    ? null
+    : {
     annotationEditorUIManager: null,
     annotationStorage: null,
     downloadManager: null,
@@ -104,7 +104,6 @@ const DEFAULT_LAYER_PROPERTIES = () => {
       return new SimpleLinkService();
     },
   };
-};
 
 /**
  * @implements {IRenderableView}
@@ -156,7 +155,6 @@ class PDFPageView {
     this.#textLayerMode = options.textLayerMode ?? TextLayerMode.ENABLE;
     this.#annotationMode =
       options.annotationMode ?? AnnotationMode.ENABLE_FORMS;
-      console.log("pdf_page_view.js this.#annotationMode: "+this.#annotationMode)
     this.imageResourcesPath = options.imageResourcesPath || "";
     this.isOffscreenCanvasSupported =
       options.isOffscreenCanvasSupported ?? true;
@@ -165,26 +163,9 @@ class PDFPageView {
 
     this.eventBus = options.eventBus;
     this.renderingQueue = options.renderingQueue;
-    this.eventBus = options.eventBus;
-    this.renderingQueue = options.renderingQueue;
-    this.textLayerFactory = options.textLayerFactory;
     this.highlightLayerFactory = options.highlightLayerFactory; //追加
-    this.questionLayerFactory = options.questionLayerFactory; //追加
-    this.annotationLayerFactory = options.annotationLayerFactory;
-    this.annotationEditorLayerFactory = options.annotationEditorLayerFactory;
-    this.xfaLayerFactory = options.xfaLayerFactory;
-    this.textHighlighter =
-      options.textHighlighterFactory?.createTextHighlighter({
-        pageIndex: this.id - 1,
-        eventBus: this.eventBus,
-      });
-    this.structTreeLayerFactory = options.structTreeLayerFactory;
-    if (
-      typeof PDFJSDev === "undefined" 
-    //   || PDFJSDev.test("!PRODUCTION || GENERIC")
-    ) {
-      this.renderer = options.renderer || RendererType.CANVAS;
-    }
+    this.questionLayerFactory = options.questionLayerFactory; //追
+    
     this.l10n = options.l10n || NullL10n;
 
     this.renderTask = null;
@@ -192,13 +173,6 @@ class PDFPageView {
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       this._isStandalone = !this.renderingQueue?.hasViewer();
       this._container = container;
-
-      if (options.useOnlyCssZoom) {
-        console.error(
-          "useOnlyCssZoom was removed, please use `maxCanvasPixels = 0` instead."
-        );
-        this.maxCanvasPixels = 0;
-      }
     }
 
     this._annotationCanvasMap = null;
@@ -206,21 +180,19 @@ class PDFPageView {
     this.annotationLayer = null;
     this.annotationEditorLayer = null;
     this.textLayer = null;  //追加
-    this.highlightLayer = null;
+    this.highlightLayer = null; //追加
     this.questionLayer = null;  //追加
     this.zoomLayer = null;
     this.xfaLayer = null;
     this.structTreeLayer = null;
-    //キャッシュチェック
-
+    this.drawLayer = null;
 
     const div = document.createElement("div");
     div.className = "page";
     div.setAttribute("data-page-number", this.id);
     div.setAttribute("role", "region");
-    this.l10n.get("page_landmark", { page: this.id }).then(msg => {
-      div.setAttribute("aria-label", msg);
-    });
+    div.setAttribute("data-l10n-id", "pdfjs-page-landmark");
+    div.setAttribute("data-l10n-args", JSON.stringify({ page: this.id }));
     this.div = div;
 
     this.#setDimensions();
@@ -250,6 +222,11 @@ class PDFPageView {
           this.#useThumbnailCanvas.initialOptionalContent =
             optionalContentConfig.hasInitialVisibility;
         });
+      }
+
+      // Ensure that Fluent is connected in e.g. the COMPONENTS build.
+      if (this.l10n === NullL10n) {
+        this.l10n.translate(this.div);
       }
     }
   }
@@ -316,7 +293,7 @@ class PDFPageView {
         this.pageColors?.background === "Canvas")
     ) {
       this._container?.style.setProperty(
-        "--hcm-highligh-filter",
+        "--hcm-highlight-filter",
         pdfPage.filterFactory.addHighlightHCMFilter(
           "CanvasText",
           "Canvas",
@@ -349,7 +326,7 @@ class PDFPageView {
       new TextHighlighter({
         pageIndex: this.id - 1,
         eventBus: this.eventBus,
-        findController: this.#layerProperties().findController,
+        findController: this.#layerProperties.findController,
       })
     );
   }
@@ -386,17 +363,36 @@ class PDFPageView {
     }
   }
 
+  async #renderDrawLayer() {
+    try {
+      await this.drawLayer.render("display");
+    } catch (ex) {
+      console.error(`#renderDrawLayer: "${ex}".`);
+    }
+  }
+
   async #renderXfaLayer() {
     let error = null;
     try {
       const result = await this.xfaLayer.render(this.viewport, "display");
       if (result?.textDivs && this._textHighlighter) {
+// Given that the following method fetches the text asynchronously we
+        // can invoke it *before* appending the xfaLayer to the DOM (below),
+        // since a pending search-highlight/scroll operation thus won't run
+        // until after the xfaLayer is available in the viewer.
         this.#buildXfaTextContentItems(result.textDivs);
       }
     } catch (ex) {
       console.error(`#renderXfaLayer: "${ex}".`);
       error = ex;
     } finally {
+      if (this.xfaLayer?.div) {
+        // Pause translation when inserting the xfaLayer in the DOM.
+        this.l10n.pause();
+        this.div.append(this.xfaLayer.div);
+        this.l10n.resume();
+      }
+
       this.eventBus.dispatch("xfalayerrendered", {
         source: this,
         pageNumber: this.id,
@@ -494,7 +490,10 @@ class PDFPageView {
       : null);
     const treeDom = this.structTreeLayer?.render(tree);
     if (treeDom) {
+// Pause translation when inserting the structTree in the DOM.
+      this.l10n.pause();
       this.canvas?.append(treeDom);
+      this.l10n.resume();
     }
     this.structTreeLayer?.show();
   }
@@ -623,7 +622,7 @@ class PDFPageView {
 
   /**
    * Update e.g. the scale and/or rotation of the page.
-   * @param {PDFPageViewUpdateParameters}
+   * @param {PDFPageViewUpdateParameters} params
    */
   update({
     scale = 0,
@@ -631,8 +630,6 @@ class PDFPageView {
     optionalContentConfigPromise = null,
     drawingDelay = -1,
   }) {
-
-    console.log("pdf_page_view update()")
     this.scale = scale || this.scale;
     if (typeof rotation === "number") {
       this.rotation = rotation; // The rotation may be zero.
@@ -772,6 +769,7 @@ class PDFPageView {
       this.textLayer = null;
     }
 
+    //ここから追加
     if (this.hihglightLayer && (!keepTextLayer || !this.textLayer.div)) {
       this.highlightLayer.cancel();
       this.highlightLayer = null;
@@ -780,6 +778,7 @@ class PDFPageView {
       this.questionLayer.cancel();
       this.questionLayer = null;
     }
+    //ここまで
 
     if (this.structTreeLayer && !this.textLayer) {
       this.structTreeLayer = null;
@@ -796,6 +795,10 @@ class PDFPageView {
       this.annotationEditorLayer &&
       (!keepAnnotationEditorLayer || !this.annotationEditorLayer.div)
     ) {
+    if (this.drawLayer) {
+        this.drawLayer.cancel();
+        this.drawLayer = null;
+      }
       this.annotationEditorLayer.cancel();
       this.annotationEditorLayer = null;
     }
@@ -842,66 +845,15 @@ class PDFPageView {
         scaleY = width / height;
       }
       target.style.transform = `rotate(${relativeRotation}deg) scale(${scaleX}, ${scaleY})`;
-      // if (this.textLayer) {
-      // // Rotating the text layer is more complicated since the divs inside the
-      // // the text layer are rotated.
-      // // TODO: This could probably be simplified by drawing the text layer in
-      // // one orientation and then rotating overall.
-      // const textLayerViewport = this.textLayer.viewport;
-      // const textRelativeRotation =
-      //   this.viewport.rotation - textLayerViewport.rotation;
-      // const textAbsRotation = Math.abs(textRelativeRotation);
-      // let scale = width / textLayerViewport.width;
-      // if (textAbsRotation === 90 || textAbsRotation === 270) {
-      //   scale = width / textLayerViewport.height;
-      // }
-      // const textLayerDiv = this.textLayer.textLayerDiv;
-      // let transX, transY;
-      // switch (textAbsRotation) {
-      //   case 0:
-      //     transX = transY = 0;
-      //     break;
-      //   case 90:
-      //     transX = 0;
-      //     transY = "-" + textLayerDiv.style.height;
-      //     break;
-      //   case 180:
-      //     transX = "-" + textLayerDiv.style.width;
-      //     transY = "-" + textLayerDiv.style.height;
-      //     break;
-      //   case 270:
-      //     transX = "-" + textLayerDiv.style.width;
-      //     transY = 0;
-      //     break;
-      //   default:
-      //     console.error("Bad rotation value.");
-      //     break;
-      // }
-
-      // textLayerDiv.style.transform =
-      // `rotate(${textAbsRotation}deg) ` +
-      // `scale(${scale}) ` +
-      // `translate(${transX}, ${transY})`;
-      // textLayerDiv.style.transformOrigin = "0% 0%";
-
-      // if(this.highlightLayer){
-      //   const highlightLayerDiv = this.highlightLayer.textLayerDiv;
-      //   highlightLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
-      //   highlightLayerDiv.style.transformOrigin = "0% 0%";
-      // }
-
-      // if(this.questionLayer){
-      //   const questionLayerDiv = this.questionLayer.textLayerDiv;
-      //   questionLayerDiv.style.transform = `rotate(${textAbsRotation}deg) ` + `scale(${scale}) ` + `translate(${transX}, ${transY})`;
-      //   questionLayerDiv.style.transformOrigin = "0% 0%";
-      // }
-      //  }
-    }
+          }
 
     if (redrawAnnotationLayer && this.annotationLayer) {
       this.#renderAnnotationLayer();
     }
     if (redrawAnnotationEditorLayer && this.annotationEditorLayer) {
+      if (this.drawLayer) {
+        this.#renderDrawLayer();
+      }
       this.#renderAnnotationEditorLayer();
     }
     if (redrawXfaLayer && this.xfaLayer) {
@@ -911,26 +863,16 @@ class PDFPageView {
     if (this.textLayer) {
       if (hideTextLayer) {
         this.textLayer.hide();
-        this.highlightLayer.hide();
-        this.questionLayer.hide();
+        this.highlightLayer.hide(); //追加
+        this.questionLayer.hide(); //追加
         this.structTreeLayer?.hide();
       } else if (redrawTextLayer) {
-        console.log("PDFPageView this.#renderHighlightLayer(); this.#renderTextLayer()" ) 
+        //console.log("PDFPageView this.#renderHighlightLayer(); this.#renderTextLayer()" ) 
         this.#renderHighlightLayer();//追加
         this.#renderTextLayer(); //追加 
       }
     }
-
-    /* 
-    2023/9/22 追加
-    ここにhighlightLayerとquestionLayerをrenderする命令を挿入
-    #renderHighlightLayer()やrenderQuestionLayer()もしかるべき場所に作る必要がある
-    */
   }
-
-
-
-  
 
   get width() {
     return this.viewport.width;
@@ -1014,7 +956,12 @@ class PDFPageView {
         enablePermissions:
           this.#textLayerMode === TextLayerMode.ENABLE_PERMISSIONS,
       });
-      div.append(this.textLayer.div);
+      this.textLayer.onAppend = textLayerDiv => {
+        // Pause translation when inserting the textLayer in the DOM.
+        this.l10n.pause();
+        this.div.append(textLayerDiv);
+        this.l10n.resume();
+      };
     }
 
 
@@ -1035,8 +982,14 @@ class PDFPageView {
         enablePermissions:
           this.#textLayerMode === TextLayerMode.ENABLE_PERMISSIONS,
       });
-      div.append(this.highlightLayer.div);
-    }
+      this.highlightLayer.onAppend = highlightLayerDiv => {
+        // Pause translation when inserting the textLayer in the DOM.
+        this.l10n.pause();
+        this.div.append(highlightLayerDiv);
+        this.l10n.resume();
+      //div.append(this.highlightLayer.div);
+      }
+    }  
 
     if (
       this.textLayer
@@ -1054,7 +1007,13 @@ class PDFPageView {
         enablePermissions:
           this.#textLayerMode === TextLayerMode.ENABLE_PERMISSIONS,
       });
-      div.append(this.questionLayer.div);
+      this.questionLayer.onAppend = questionLayerDiv => {
+        // Pause translation when inserting the textLayer in the DOM.
+        this.l10n.pause();
+        this.div.append(questionLayerDiv);
+        this.l10n.resume();
+      //div.append(this.questionLayer.div);
+      }
     }
 
 
@@ -1070,7 +1029,7 @@ class PDFPageView {
         fieldObjectsPromise,
         hasJSActionsPromise,
         linkService,
-      } = this.#layerProperties();
+      } = this.#layerProperties;
 
       this._annotationCanvasMap ||= new Map();
       this.annotationLayer = new AnnotationLayerBuilder({
@@ -1081,7 +1040,6 @@ class PDFPageView {
         renderForms: this.#annotationMode === AnnotationMode.ENABLE_FORMS,
         linkService,
         downloadManager,
-        l10n,
         enableScripting,
         hasJSActionsPromise,
         fieldObjectsPromise,
@@ -1185,19 +1143,23 @@ class PDFPageView {
         this.#renderHighlightLayer();
         this.#renderTextLayer();
         
-
-        //renderHighlightLayerの追加が必要
-
         if (this.annotationLayer) {
           await this.#renderAnnotationLayer();
         }
 
-        if (!this.annotationEditorLayer) {
-          const { annotationEditorUIManager } = this.#layerProperties();
+        const { annotationEditorUIManager } = this.#layerProperties;
 
           if (!annotationEditorUIManager) {
             return;
           }
+
+        this.drawLayer ||= new DrawLayerBuilder({
+          pageIndex: this.id,
+        });
+        await this.#renderDrawLayer();
+        this.drawLayer.setParent(canvasWrapper);
+
+        if (!this.annotationEditorLayer) {
           this.annotationEditorLayer = new AnnotationEditorLayerBuilder({
             uiManager: annotationEditorUIManager,
             pageDiv: div,
@@ -1205,6 +1167,8 @@ class PDFPageView {
             l10n,
             accessibilityManager: this._accessibilityManager,
             annotationLayer: this.annotationLayer?.annotationLayer,
+            textLayer: this.textLayer,
+            drawLayer: this.drawLayer.getDrawLayer(),
           });
         }
         this.#renderAnnotationEditorLayer();
@@ -1222,17 +1186,13 @@ class PDFPageView {
 
     if (pdfPage.isPureXfa) {
       if (!this.xfaLayer) {
-        const { annotationStorage, linkService } = this.#layerProperties();
+        const { annotationStorage, linkService } = this.#layerProperties;
 
         this.xfaLayer = new XfaLayerBuilder({
-          pageDiv: div,
           pdfPage,
           annotationStorage,
           linkService,
         });
-      } else if (this.xfaLayer.div) {
-        // The xfa layer needs to stay on top.
-        div.append(this.xfaLayer.div);
       }
       this.#renderXfaLayer();
     }
@@ -1251,6 +1211,11 @@ class PDFPageView {
    */
   setPageLabel(label) {
     this.pageLabel = typeof label === "string" ? label : null;
+
+    this.div.setAttribute(
+      "data-l10n-args",
+      JSON.stringify({ page: this.pageLabel ?? this.id })
+    );
 
     if (this.pageLabel !== null) {
       this.div.setAttribute("data-page-label", this.pageLabel);

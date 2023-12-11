@@ -56,7 +56,7 @@ class SecondaryToolbar {
    * @param {SecondaryToolbarOptions} options
    * @param {EventBus} eventBus
    */
-  constructor(options, eventBus, externalServices) {
+  constructor(options, eventBus) {
     this.toolbar = options.toolbar;
     this.toggleButton = options.toggleButton;
     this.buttons = [
@@ -214,9 +214,12 @@ class SecondaryToolbar {
         if (close) {
           this.close();
         }
-        this.externalServices.reportTelemetry({
-          type: "buttons",
-          data: { id: element.id },
+        this.eventBus.dispatch("reporttelemetry", {
+          source: this,
+          details: {
+            type: "buttons",
+            data: { id: element.id },
+          },
         });
       });
     }

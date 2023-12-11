@@ -81,9 +81,9 @@
       "description": "Whether to allow execution of active content (JavaScript) by PDF files.",
       "default": false
     },
-    "enableStampEditor": {
+    "enableHighlightEditor": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "disableRange": {
       "title": "Disable range requests",

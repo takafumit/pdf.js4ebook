@@ -22,7 +22,7 @@
 
 import { normalizeUnicode, renderTextLayer, updateTextLayer } from "pdfjs-lib";
 import { removeNullCharacters } from "./ui_utils.js";
-import { PDFViewerApplication } from "./app";
+import { PDFViewerApplication } from "./app.js";
 
 /**
  * @typedef {Object} TextLayerBuilderOptions
@@ -161,7 +161,8 @@ class QuestionLayerBuilder {
     this.#finishRendering();
     this.#scale = scale;
     this.#rotation = rotation;
-    this.show();
+    //this.show();
+    this.onAppend(this.div);
     this.accessibilityManager?.enable();
   }
 

@@ -10,9 +10,9 @@
 
 <canvas id="the-canvas" style="border: 1px solid black; direction: ltr;"></canvas>
 
-<script src="../../node_modules/pdfjs-dist/build/pdf.js"></script>
+<script src="../../node_modules/pdfjs-dist/build/pdf.mjs" type="module"></script>
 
-<script id="script">
+<script id="script" type="module">
   //
   // If absolute URL from the remote server is provided, configure the CORS
   // header on that server.
@@ -23,14 +23,13 @@
   // The workerSrc property shall be specified.
   //
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    '../../node_modules/pdfjs-dist/build/pdf.worker.js';
+    '../../node_modules/pdfjs-dist/build/pdf.worker.mjs';
 
   //
   // Asynchronous download PDF
   //
   const loadingTask = pdfjsLib.getDocument(url);
-  (async () => {
-    const pdf = await loadingTask.promise;
+      const pdf = await loadingTask.promise;
     //
     // Fetch the first page
     //
@@ -64,8 +63,7 @@
       viewport,
     };
     page.render(renderContext);
-  })();
-</script>
+  </script>
 
 <hr>
 <h2>JavaScript code:</h2>
