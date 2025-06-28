@@ -165,6 +165,8 @@ function init() {
   PDFViewerApplication.eventBus.on('pagesinit',sync);
   PDFViewerApplication.eventBus.on('scalechanging',sync);
   window.addEventListener('resize',sync); sync();
+
+  
 }
 
 /* ========= 起動 ========= */
