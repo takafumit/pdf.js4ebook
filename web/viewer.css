@@ -1672,3 +1672,13 @@ dialog :link {
 }
 .note:active   { cursor:grabbing; }
 .note.selected { outline:2px solid #1e88e5; }
+
+.toolbarButton.noteButton {
+  background-image: none !important;   /* デフォルトの黒いアイコン画像を消す */
+  min-width: 32px;                     /* 他ボタンと幅をそろえる */
+  font-size: 18px;                     /* 絵文字を大きめに見せる（任意） */
+  line-height: 22px;
+}
+.toolbarButton.noteButton::before {    /* スプライト用疑似要素を非表示 */
+  display: none;
+}
