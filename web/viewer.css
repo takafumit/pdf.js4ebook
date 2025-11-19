@@ -103,6 +103,14 @@
   --toolbarButton-editorHighlight-icon: url(images/toolbarButton-editorHighlight.svg);
   --toolbarButton-editorInk-icon: url(images/toolbarButton-editorInk.svg);
   --toolbarButton-editorStamp-icon: url(images/toolbarButton-editorStamp.svg);
+
+  /* 2025/10/29 */
+  --editor-toolbar-delete-image: url(images/editor-toolbar-delete.svg);
+  --toolbarButton-speech-bubble-icon: url(images/original-speech-bubble.svg);
+  --toolbarButton-show-icon: url(images/original-showNote.svg);
+  --toolbarButton-saveAnnotation-icon: url(images/original-download.svg);
+  --toolbarButton-loadAnnotation-icon: url(images/original-load.svg);
+
   --toolbarButton-editorSignature-icon: url(images/toolbarButton-editorSignature.svg);
   --toolbarButton-menuArrow-icon: url(images/toolbarButton-menuArrow.svg);
   --toolbarButton-sidebarToggle-icon: url(images/toolbarButton-sidebarToggle.svg);
@@ -331,16 +339,23 @@ body {
   border-radius: 4px;
   position: absolute;
   z-index: 1001;        /* ハイライトより前面に */
+  resize: none;
 }
 
 .highlight {
   background-color: rgba(255, 255, 0, 0.3);
   border-radius: 2px;
   position: absolute;
-  z-index: 5;         /* ノートより下 */
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 500;         /* ノートより下 */
 }
 
-/* 💬 吹き出しボタン*/
+.toolbarButton {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+/* 💬 吹き出しボタン */
 .note-bubble {
   position: absolute;
   font-size: 22px;
@@ -349,12 +364,79 @@ body {
   z-index: 15;
   pointer-events: auto; 
   transition: transform 0.2s ease;
-}
-
-/* ホバー時に少し拡大して見やすくする */
-.note-bubble:hover {
   transform: scale(1.5);
 }
+
+.note-bubble:hover {
+  transform: scale(3.0);
+} 
+
+.note-resize-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  right: 0;
+  bottom: 0;
+  cursor: se-resize;
+  background: rgba(0,0,0,0.3);
+  border-radius: 2px;
+}
+
+#addNoteButton::before {
+  mask-image: var(--toolbarButton-editorFreeText-icon);
+}
+#addHighlightButton::before {
+  mask-image: var(--toolbarButton-editorHighlight-icon);
+}
+#deleteButton::before{
+  mask-image: var(--editor-toolbar-delete-image);
+}
+#showButton::before{
+  mask-image: var(--toolbarButton-show-icon);
+}
+#bubbleButton::before{
+  mask-image: var(--toolbarButton-speech-bubble-icon);
+}
+#saveAnnotationButton::before{
+  mask-image: var(--toolbarButton-saveAnnotation-icon);
+}
+#loadAnnotationButton::before{
+  mask-image: var(--toolbarButton-loadAnnotation-icon);
+}
+#findButton::before {
+  mask-image: var(--toolbarButton-search-icon);
+}
+
+/* もともと表示されている注釈機能を非表示に */
+#editorSignature,
+#editorSignatureButton,
+#editorFreeText,
+#editorFreeTextButton,
+#editorHighlight,
+#editorHighlightButton,
+#editorInk,
+#editorStamp,
+#editorStampButton,
+#viewFindButton,
+#presentationMode,
+#scrollModeButtons {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.editToolbar .highlightButton,
+.editToolbar .highlightButton * {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+}
+
 
 /* ここまで追加 */
 
@@ -1706,13 +1788,12 @@ dialog :link {
   }
 }
 
-
 /* === Custom Note Layer & Note === */
 
 .note-layer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1000; }
 .note {
   position:absolute; background:#fffcc0; border:1px solid #aaa; padding:6px;
-  min-width:100px; min-height:40px; font-size:12px; resize:both; overflow:auto;
+  min-width:100px; min-height:40px; font-size:12px; resize:both; overflow:none;
   pointer-events:auto; cursor:grab;
 }
 .note:active   { cursor:grabbing; }

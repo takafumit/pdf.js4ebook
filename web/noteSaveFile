@@ -1,0 +1,200 @@
+// 2025/11/10 ファイル保存形式（サーバなし）
+function downloadNotesAndHighlights() {
+  const notesData = localStorage.getItem(STORAGE_KEY);
+  const highlightsData = localStorage.getItem(HIGHLIGHT_KEY);
+
+  const blob = new Blob(
+    [JSON.stringify({ notes: notesData, highlights: highlightsData }, null, 2)],
+    { type: "application/json" }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "pdf_notes.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ボタンクリックでノートをJSONとしてダウンロード
+document.getElementById("downloadAnnotationButton").addEventListener("click", () => {
+    const notesData = localStorage.getItem(STORAGE_KEY);
+    const highlightsData = localStorage.getItem(HIGHLIGHT_KEY);
+
+    const blob = new Blob(
+        [JSON.stringify({ notes: notesData, highlights: highlightsData }, null, 2)],
+        { type: "application/json" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pdf_notes.json";
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+// ここから復元
+// --- 非表示のファイル入力を作る ---
+const fileInput = document.createElement("input");
+fileInput.type = "file";
+fileInput.accept = ".json";
+fileInput.style.display = "none";
+document.body.appendChild(fileInput);
+
+// --- Load ボタンを押したときにファイル選択を開く ---
+document.getElementById("loadAnnotationButton").addEventListener("click", () => {
+    fileInput.click();
+});
+
+// --- ファイル選択時に読み込む ---
+fileInput.addEventListener("change", (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+
+            // notes が文字列ならパースして配列にする
+            let notes = data.notes;
+            if (typeof notes === "string") {
+                notes = JSON.parse(notes).notes;
+            }
+
+            if (notes) {
+                restoreNotesFromData(notes);
+            }
+
+            // highlights も同様に必要なら復元
+            let highlights = data.highlights;
+            if (highlights && typeof highlights === "string") {
+                highlights = JSON.parse(highlights).highlights;
+            }
+            if (highlights) {
+                restoreHighlightsFromData(highlights);
+            }
+
+        } catch (err) {
+            console.error("JSONの読み込みに失敗しました:", err);
+        }
+    };
+    reader.readAsText(file);
+});
+
+// --- ノート復元関数（複数ページ対応・ズーム対応） ---
+function restoreNotesFromData(notes) {
+    const noteLayer = document.getElementById("noteLayer");
+    if (!noteLayer) return;
+
+    // 既存ノートをクリア
+    noteLayer.innerHTML = "";
+
+    notes.forEach(n => {
+        const note = document.createElement("div");
+        note.className = "note";
+        note.contentEditable = "true";
+        note.textContent = n.text;
+
+        // dataset に linkedText などをコピー
+        Object.assign(note.dataset, n);
+
+        note.style.color = n.color || "black";
+        note.style.fontSize = (n.fontSize || "14") + "px";
+        note.style.width = n.w + "px";
+        note.style.height = n.h + "px";
+
+        // ページ対応と座標変換
+        const pageView = PDFViewerApplication.pdfViewer.getPageView(n.page - 1);
+        if (pageView) {
+            const viewport = pageView.viewport;
+            const [x, y] = viewport.convertToViewportPoint(n.x, n.y);
+            note.style.left = x + "px";
+            note.style.top = (y - n.h) + "px"; // PDFの原点が左下
+        }
+
+        // イベントやドラッグ・リサイズは既存関数をそのまま
+        note.onclick = e => { e.stopPropagation(); select(note); showNoteTextStylePalette(note); };
+        note.onfocus = () => { note.dataset.editing = "true"; note.dataset.origText = note.textContent; };
+        note.onblur = () => commit(note);
+
+        note.addEventListener("input", () => {
+            note.dataset.origText = note.textContent;
+            scheduleSave();
+        });
+
+        enableDrag(note);
+        enableResize(note);
+        noteLayer.appendChild(note);
+    });
+
+    // --- ここで自動保存 ---
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ notes }));
+    updateNotePositions();
+
+    if (notes?.length) {
+        console.log("📝 復元後のノート一覧:");
+        console.table(notes);
+    }
+}
+
+// --- もしハイライトも復元したければ ---
+function restoreHighlightsFromData(highlights) {
+    if (!highlights?.length) return;
+    const noteLayer = document.getElementById("noteLayer");
+    if (!noteLayer) return;
+
+    // 既存のハイライトをクリア
+    noteLayer.querySelectorAll(".highlight").forEach(h => h.remove());
+
+    highlights.forEach(h => {
+        const pageView = PDFViewerApplication.pdfViewer.getPageView(h.page - 1);
+        if (!pageView) return;
+
+        const vp = pageView.viewport;
+
+        const highlight = document.createElement("div");
+        highlight.className = "highlight";
+        highlight.dataset.page = h.page;
+        highlight.dataset.color = h.color || "yellow";
+        highlight.dataset.id = h.id;
+        highlight.dataset.x = h.x;
+        highlight.dataset.y = h.y;
+        highlight.dataset.w = h.w;
+        highlight.dataset.h = h.h;
+        highlight.dataset.text = h.text || "";
+
+        // PDF座標 → 表示座標に変換
+        const [viewX, viewY] = vp.convertToViewportPoint(h.x, h.y);
+
+        highlight.style.position = "absolute";
+        highlight.style.left = `${viewX + pageView.div.offsetLeft}px`;
+        highlight.style.top = `${viewY + pageView.div.offsetTop}px`;
+        highlight.style.width = `${h.w * vp.scale}px`;
+        highlight.style.height = `${h.h * vp.scale}px`;
+
+        // 色・枠線・操作設定
+        const colorInfo = highlightColors[h.color] || highlightColors.yellow;
+        highlight.style.backgroundColor = colorInfo.bg;
+        highlight.style.border = `1px solid ${colorInfo.border}`;
+        highlight.style.pointerEvents = "auto";
+        highlight.style.cursor = "pointer";
+
+        highlight.onclick = ev => {
+            ev.stopPropagation();
+            toggleHighlightSelection(highlight);
+        };
+
+        noteLayer.appendChild(highlight);
+    });
+
+    // --- ここで自動保存 ---
+    localStorage.setItem(HIGHLIGHT_KEY, JSON.stringify({ highlights }));
+
+    console.log("🖍️ 復元後のハイライト一覧:");
+    console.table(highlights);
+    console.log("🟢 ハイライト復元完了:", highlights.length, "件");
+}

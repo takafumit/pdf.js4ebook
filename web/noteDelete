@@ -1,0 +1,314 @@
+// 削除ボタン
+// function createDeleteButton() {
+//   const btn = document.getElementById("deleteButton");
+//   if (!btn) return;
+
+//   const updateButtonState = () => {
+//     if (!selected) {
+//       btn.disabled = true;
+//       btn.style.opacity = "0.5";
+//     } else {
+//       btn.disabled = false;
+//       btn.style.opacity = "1";
+//     }
+//   };
+
+//   document.addEventListener("selectionchange", updateButtonState);
+//   updateButtonState();
+
+//   btn.onclick = () => {
+//     if (!selected) return;
+
+//     if (!confirm("本当に削除しますか？")) return;
+
+//     if (selected.classList.contains("note")) {
+//       doOp(OP.delete(selected, selected.parentElement));
+//       selected.remove();
+//       hideNoteColorPalette();
+//       select(null);
+//       saveAllNotes();
+//     } else if (selected.classList.contains("highlight")) {
+//       doOp(OP.delete(selected, selected.parentElement));
+//       selected.remove();
+//       hideHighlightColorPalette();
+//       select(null);
+//       saveAllHighlights();
+//     }
+//     updateButtonState();
+//   };
+// }
+
+// フリーハイライト機能
+// 2025/11/17 フリーハイライト機能
+document.getElementById("addFreeHighlightButton").addEventListener("click", () => {
+  freeHighlightMode = !freeHighlightMode;
+
+  if (freeHighlightMode) {
+    document.body.style.cursor = "crosshair";
+  } else {
+    document.body.style.cursor = "default";
+  }
+});
+
+document.getElementById("noteLayer").addEventListener("mousedown", e => {
+  if (!freeHighlightMode) return;
+
+  const pageDiv = e.target.closest(".page");
+  if (!pageDiv) return;
+
+  const pageNum = parseInt(pageDiv.dataset.pageNumber);
+  const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+  const rect = pageView.div.getBoundingClientRect();
+
+  const domX = e.clientX - rect.left;
+  const domY = e.clientY - rect.top;
+  const [pdfX, pdfY] = pageView.viewport.convertToPdfPoint(domX, domY);
+
+  createFreeHighlight(pdfX, pdfY, pageNum);
+
+  freeHighlightMode = false;
+  document.body.style.cursor = "default";
+});
+
+function createFreeHighlight(pdfX, pdfY, pageNum) {
+  const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+  const noteLayer = document.getElementById("noteLayer");
+  const colorInfo = highlightColors[currentHighlightColor];
+
+  const highlight = document.createElement("div");
+  highlight.className = "highlight";
+  highlight.dataset.page = pageNum;
+  highlight.dataset.color = currentHighlightColor;
+  highlight.dataset.text = ""; // PDFテキストに紐付けない
+  highlight.dataset.id = `hl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  highlight.dataset.x = pdfX;
+  highlight.dataset.y = pdfY;
+  highlight.dataset.w = 80;   // 初期サイズ
+  highlight.dataset.h = 30;
+
+  const [viewX, viewY] = pageView.viewport.convertToViewportPoint(pdfX, pdfY);
+
+  highlight.style.position = "absolute";
+  highlight.style.left = `${viewX + pageView.div.offsetLeft}px`;
+  highlight.style.top = `${viewY + pageView.div.offsetTop}px`;
+  highlight.style.width = `${80 * pageView.viewport.scale}px`;
+  highlight.style.height = `${30 * pageView.viewport.scale}px`;
+  highlight.style.backgroundColor = colorInfo.bg;
+  highlight.style.border = `1px solid ${colorInfo.border}`;
+  highlight.style.cursor = "move";
+
+  // 選択処理（既存）
+  highlight.onclick = ev => {
+    ev.stopPropagation();
+    select(highlight);
+  };
+
+  noteLayer.appendChild(highlight);
+  doOp(OP.create(highlight, $("noteLayer")));
+
+  enableHighlightDrag(highlight);
+  scheduleSave();
+}
+
+function enableHighlightDrag(hl) {
+  let startX, startY, fromLeft, fromTop;
+
+  hl.onmousedown = e => {
+    if (e.button !== 0) return;
+
+    commit(hl);
+
+    const cs = getComputedStyle(hl);
+    startX = e.clientX;
+    startY = e.clientY;
+    fromLeft = parseFloat(cs.left);
+    fromTop = parseFloat(cs.top);
+
+    let moved = false; // ← 追加
+
+    document.onmousemove = ev => {
+      moved = true; // ← 動いた
+      move(ev);
+    };
+
+    document.onmouseup = ev => {
+      document.onmousemove = document.onmouseup = null;
+
+      if (!moved) {
+        // ← 動いてなければクリック扱い
+        select(hl);
+        return;
+      }
+
+      // ← 動いてたらドラッグ扱い
+      const pageNum = parseInt(hl.dataset.page);
+      const { x, y, w, h } = domToPdf(hl, pageNum);
+
+      hl.dataset.x = x;
+      hl.dataset.y = y;
+      hl.dataset.w = w;
+      hl.dataset.h = h;
+
+      scheduleSave();
+    };
+
+    e.stopPropagation();
+  };
+
+  const move = e => {
+    hl.style.left = `${fromLeft + e.clientX - startX}px`;
+    hl.style.top = `${fromTop + e.clientY - startY}px`;
+  };
+
+  const up = () => {
+    document.onmousemove = document.onmouseup = null;
+
+    const pageNum = parseInt(hl.dataset.page);
+    const { x, y, w, h } = domToPdf(hl, pageNum);
+
+    hl.dataset.x = x;
+    hl.dataset.y = y;
+    hl.dataset.w = w;
+    hl.dataset.h = h;
+
+    scheduleSave();
+  };
+}
+
+// initFull（旧）
+// function initFull() {
+//   const vc = $("viewerContainer");
+//   const noteBtn = $("addNoteButton");
+//   const highlightBtn = $("addHighlightButton");
+//   const freeHighlightBtn = $("addFreeHighlightButton");
+
+//   // ノートボタンのクリックイベント
+//   noteBtn.onclick = () => {
+//     hideNoteColorPalette();
+//     hideHighlightColorPalette();
+
+//     // フリーハイライトモードを解除
+//     if (freeHighlightMode) {
+//       freeHighlightMode = false;
+//       if (freeHighlightBtn) freeHighlightBtn.classList.remove("toggled");
+//       const vcEl = $("viewerContainer");
+//       if (vcEl) vcEl.style.cursor = "default";
+//     }
+
+//     // ハイライトモードを解除
+//     highlightMode = false;
+//     if (highlightBtn) highlightBtn.classList.remove("toggled");
+
+//     // テキストモードをトグル
+//     textMode = !textMode;
+//     noteBtn.classList.toggle("toggled", textMode);
+//     console.log("テキストボックスモード:", textMode, "ハイライトモード:", highlightMode);
+
+//     const vcEl = $("viewerContainer");
+//     if (vcEl) vcEl.style.cursor = textMode ? "crosshair" : "default";
+//   };
+
+//   // ハイライトボタンのクリックイベント
+//   highlightBtn.onclick = () => {
+//     hideNoteColorPalette();
+
+//     // フリーハイライトモードを解除
+//     if (freeHighlightMode) {
+//       freeHighlightMode = false;
+//       if (freeHighlightBtn) freeHighlightBtn.classList.remove("toggled");
+//       const vcEl = $("viewerContainer");
+//       if (vcEl) vcEl.style.cursor = "default";
+//     }
+
+//     textMode = false;
+//     noteBtn.classList.remove("toggled");
+
+//     // ハイライトモードをトグル
+//     highlightMode = !highlightMode;
+//     highlightBtn.classList.toggle("toggled", highlightMode);
+//     console.log("テキストボックスモード:", textMode, "ハイライトモード:", highlightMode);
+
+//     const vcEl = $("viewerContainer");
+//     if (vcEl) vcEl.style.cursor = highlightMode ? "text" : "default";
+
+//     if (highlightMode) {
+//       showHighlightColorPalette(highlightBtn);
+//     } else {
+//       hideHighlightColorPalette();
+//     }
+//   };
+
+//   vc.addEventListener("click", e => {
+//     hideNoteColorPalette();
+//     hideHighlightColorPalette();
+
+//     if (e.target.closest(".noteColorPalette, .highlightColorPalette")) return;
+//     if (e.target.classList.contains("note-resize-handle")) return;
+
+//     if (textMode && !linkingNote && !e.target.closest(".note")) {
+//       addNote(e);
+//     } else if (!highlightMode) {
+//       select(null);
+//     }
+//   }, true);
+
+//   document.addEventListener("keydown", e => {
+//     const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+//     console.log("keydown:", e.key, "ctrl:", e.ctrlKey, "meta:", e.metaKey);
+//     // Del
+//     if (e.key === "Delete" && selected) {
+//       if (selected.classList.contains("note")) {
+//         doOp(OP.delete(selected, selected.parentElement));
+//         select(null);
+//         saveAllNotes();
+//       } else if (selected.classList.contains("highlight")) {
+//         doOp(OP.delete(selected, selected.parentElement));
+//         select(null);
+//         saveAllHighlights();
+//         hideNoteColorPalette();
+//         hideHighlightColorPalette();
+//       }
+//     }
+
+//     // Ctrl+Z
+//     if (ctrl && k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+//     if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
+
+//     // Ctrl+F
+//     if (e.ctrlKey && e.key.toLowerCase() === "f") {
+//       e.preventDefault();
+//       e.stopPropagation(); // ここを追加するとPDF.jsには届かない
+//       openSearchPanel();
+//     }
+//   });
+
+//   const bubbleBtn = $("bubbleButton");
+//   if (bubbleBtn) bubbleBtn.onclick = toggleBubbleMode;
+
+//   if (vc) {
+//     vc.addEventListener("scroll", () => {
+//       hideNoteColorPalette();
+//       hideHighlightColorPalette();
+//     });
+//   }
+
+//   const sync = () => {
+//     const v = $("viewer");
+//     const nl = $("noteLayer");
+//     if (!v || !nl) return;
+//     nl.style.width = `${v.scrollWidth}px`;
+//     nl.style.height = `${v.scrollHeight}px`;
+//   };
+//   PDFViewerApplication.eventBus.on("pagesinit", sync);
+//   PDFViewerApplication.eventBus.on("scalechanging", sync);
+//   window.addEventListener("resize", sync);
+//   sync();
+
+//   PDFViewerApplication.eventBus.on("scalechanging", updateNotePositions);
+//   PDFViewerApplication.eventBus.on("scalechanged", updateNotePositions);
+//   PDFViewerApplication.eventBus.on("pagerendered", () => setTimeout(updateNotePositions, 10));
+//   window.addEventListener("resize", updateNotePositions);
+
+//   createDeleteButton();
+// }

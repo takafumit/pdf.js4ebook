@@ -403,6 +403,7 @@ class HighlightEditor extends AnnotationEditor {
     if (!toolbar) {
       return null;
     }
+    
     if (this._uiManager.highlightColors) {
       this.#colorPicker = new ColorPicker({ editor: this });
       toolbar.addColorPicker(this.#colorPicker);

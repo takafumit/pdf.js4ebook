@@ -1,0 +1,65 @@
+// 最初のバージョン
+
+// ---------------------------
+// サーバーにノートを保存
+// ---------------------------
+function saveNotesToServer() {
+  // ローカルストレージから取得
+  const notesData = localStorage.getItem(STORAGE_KEY);
+  let notes = [];
+  if (notesData) {
+    try {
+      notes = JSON.parse(notesData).notes || [];
+    } catch (e) {
+      console.error("notes のパースに失敗", e);
+      notes = [];
+    }
+  }
+
+  fetch("http://localhost:3000/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes })
+  })
+    .then(res => res.json())
+    .then(data => console.log("📝 ノートをサーバーに保存しました:", data))
+    .catch(err => console.error("ノート保存エラー:", err));
+}
+
+// ---------------------------
+// サーバーにハイライトを保存
+// ---------------------------
+function saveHighlightsToServer() {
+  const highlightsData = localStorage.getItem(HIGHLIGHT_KEY);
+  let highlights = [];
+  if (highlightsData) {
+    try {
+      highlights = JSON.parse(highlightsData).highlights || [];
+    } catch (e) {
+      console.error("highlights のパースに失敗", e);
+      highlights = [];
+    }
+  }
+
+  fetch("http://localhost:3000/highlights", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ highlights })
+  })
+    .then(res => res.json())
+    .then(data => console.log("🖍️ ハイライトをサーバーに保存しました:", data))
+    .catch(err => console.error("ハイライト保存エラー:", err));
+}
+
+// ---------------------------
+// まとめて保存（ノート＋ハイライト）
+// ---------------------------
+function saveAllToServer() {
+  saveNotesToServer();
+  saveHighlightsToServer();
+}
+
+// ボタンから保存する場合
+document.getElementById("downloadAnnotationButton").addEventListener("click", () => {
+  saveAllToServer();
+});
