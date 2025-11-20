@@ -436,8 +436,6 @@ body {
   margin: 0 !important;
   border: 0 !important;
 }
-
-
 /* ここまで追加 */
 
 #viewerContainer:not(.pdfPresentationMode) {

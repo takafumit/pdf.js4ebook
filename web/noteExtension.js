@@ -16,7 +16,7 @@ let selectedPageView = null;
 
 let selected = null;
 let undoStack = [], redoStack = [];
-let linkingNote = null; // 2025/10/26 グローバル変数として追加
+let linkingNote = null;
 const HANDLE = 12;
 
 const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
@@ -368,7 +368,6 @@ function enableDrag(note) {
     ));
 
     scheduleSave();
-    saveNotesToServer();
   };
 }
 
@@ -412,9 +411,17 @@ function enableResize(note) {
     document.onmousemove = document.onmouseup = null;
 
     const pageNum = parseInt(note.dataset.page);
-    const { x, y, w, h } = domToPdf(note, pageNum);
-    note.dataset.w = w;
-    note.dataset.h = h;
+    // const { w, h } = domToPdf(note, pageNum);
+
+    // note.dataset.w = w;
+    // note.dataset.h = h;
+
+    const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+    const vp = pageView.viewport;
+
+    // DOMサイズを PDF 単位で dataset に保存
+    note.dataset.w = parseFloat(note.style.width) / vp.scale;
+    note.dataset.h = parseFloat(note.style.height) / vp.scale;
 
     doOp(OP.resize(
       note,
@@ -425,7 +432,6 @@ function enableResize(note) {
     ));
 
     scheduleSave();
-    saveNotesToServer();
 
     note.contentEditable = prevEditable ?? "true";
     document.body.style.userSelect = "auto";
@@ -1121,6 +1127,7 @@ function updateNotePositions() {
     if (!pageView) return;
     const vp = pageView.viewport;
     const [viewX, viewY] = vp.convertToViewportPoint(pdfX, pdfY);
+
     el.style.left = `${viewX + pageView.div.offsetLeft}px`;
     el.style.top = `${viewY + pageView.div.offsetTop}px`;
     el.style.width = `${pdfW * vp.scale}px`;
@@ -1854,6 +1861,7 @@ document.getElementById("findButton").addEventListener("click", () => {
   openSearchPanel();
 });
 
+// ポップアップ表示関数
 function openSearchPanel() {
   let popup = document.getElementById("searchPopup");
   if (popup) {
@@ -2057,19 +2065,26 @@ function scrollToPage(pageNum) {
 
 // サーバーにテキストボックス保存
 function saveNotesToServer() {
-  const notes = Array.from(document.querySelectorAll(".note")).map(note => ({
-    id: note.dataset.id,
-    page: parseInt(note.dataset.page),
-    x: parseFloat(note.dataset.x),
-    y: parseFloat(note.dataset.y),
-    w: parseFloat(note.style.width),
-    h: parseFloat(note.style.height),
-    text: note.textContent,
-    bubbleAttached: note.dataset.bubbleAttached === "true",
-    fontSize: note.dataset.fontSize || "14",
-    color: note.dataset.color || "black",
-    linkedText: note.dataset.linkedText || ""
-  }));
+  const notes = Array.from(document.querySelectorAll(".note")).map(note => {
+    const page = parseInt(note.dataset.page);
+    const pageView = PDFViewerApplication.pdfViewer.getPageView(page - 1);
+    const vp = pageView.viewport;
+
+    return {
+      id: note.dataset.id,
+      page,
+      x: parseFloat(note.dataset.x),
+      y: parseFloat(note.dataset.y),
+      w: parseFloat(note.style.width) / vp.scale,
+      h: parseFloat(note.style.height) / vp.scale,
+
+      text: note.textContent,
+      bubbleAttached: note.dataset.bubbleAttached === "true",
+      fontSize: note.dataset.fontSize || "14",
+      color: note.dataset.color || "black",
+      linkedText: note.dataset.linkedText || ""
+    };
+  });
 
   fetch("http://localhost:3000/notes", {
     method: "POST",
