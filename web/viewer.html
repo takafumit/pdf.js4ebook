@@ -96,7 +96,13 @@ See https://github.com/adobe-type-tools/cmap-resources
     </script>
   <script src="viewer.js" type="module"></script>
   <!-- 追加（defer を付けて HTML 解析をブロックしない） -->
-  <script defer src="noteExtension.js"></script>
+  <!-- <script defer src="noteExtension.js"></script> -->
+   <script type="module" src="noteExtension.js"></script>
+   <script type="module" src="serverStorage.js"></script>
+   <script type="module" src="searchManager.js"></script>
+   <script type="module" src="noteBubble.js"></script>
+   <script type="module" src="highlightMode.js"></script>
+   <script type="module" src="noteMode.js"></script>
   <!--#endif-->
 </head>
 
