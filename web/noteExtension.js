@@ -3,49 +3,20 @@
    Robust Undo / Redo：create, move, delete, update
    ======================================================== */
 
-import {
-  saveNotesToServer,
-  saveAllToServer,
-  loadAllFromServer
-} from './serverStorage.js';
-
-import {
-  openSearchPanel
-} from './searchManager.js';
-
-import {
-  showSidebar
-} from './sidebarManager.js';
-
-import {
-  toggleBubbleMode,
-  updateBubblePositions
-} from './noteBubble.js';
-
-import {
-  addHighlightFromSelection,
-  showHighlightColorPalette,
-  hideHighlightColorPalette,
-  saveAllHighlights,
-  createFreeHighlight,
-  makeHighlightDraggableAndResizable
-} from './highlightMode.js';
-
-import {
-  addNote,
-  commit,
-  saveAllNotes,
-  hideNoteColorPalette,
-} from './noteMode.js';
+import { saveNotesToServer, loadAllFromServer } from './serverStorage.js';
+import { openSearchPanel } from './searchManager.js';
+import { showSidebar } from './sidebarManager.js';
+import { toggleBubbleMode, updateBubblePositions } from './noteBubble.js';
+import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, saveAllHighlights, createFreeHighlight } from './highlightMode.js';
+import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
+import { updateNotePositions, createDeleteButton, showLinkStatus } from './noteAndHighlightManager.js';
+import { OP, doOp, undo, redo } from './undoRedoManager.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
-// noteExtension.js
 export const state = {
   textMode: false,
   highlightMode: false,
-
-  // 2025/11/18
   freeHighlightMode: false,
   freerect: null,
   freerectStare: null,
@@ -57,24 +28,23 @@ export const state = {
   linkingNote: null
 };
 
-const HANDLE = 12;
-
-const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
-const TEXT_KEY = `notes::${pdfId}`;
-const HIGHLIGHT_KEY = `highlights::${pdfId}`;
+export const HANDLE = 12;
+export const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
+export const TEXT_KEY = `notes::${pdfId}`;
+export const HIGHLIGHT_KEY = `highlights::${pdfId}`;
 
 /* ---------- 色定義 ---------- */
-const highlightColors = {
+export const highlightColors = {
   yellow: { name: "yellow", border: "rgba(255,255,0,0.5)", bg: "rgba(255,255,0,0.3)" },
   green: { name: "green", border: "rgba(144,238,144,0.5)", bg: "rgba(144,238,144,0.3)" },
   pink: { name: "pink", border: "rgba(255,182,193,0.6)", bg: "rgba(255,182,193,0.4)" },
 };
 
 // 安全な $ ヘルパー（存在しなければ null を返す）
-const $ = id => document.getElementById(id);
+export const $ = id => document.getElementById(id);
 
 /* ---------- DOM → PDF座標変換 ---------- */
-function domToPdf(el, pageNum) {
+export function domToPdf(el, pageNum) {
   const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
   const vp = pageView.viewport;
   const rect = el.getBoundingClientRect();
@@ -87,175 +57,8 @@ function domToPdf(el, pageNum) {
   return { x: pdfX, y: pdfY, w: rect.width / vp.scale, h: rect.height / vp.scale };
 }
 
-/* ---------- ハイライトを複数行選択したときに1つにまとめるときに使用 ---------- */
-function mergeRects(rects, threshold = 3) {
-  const rs = rects.map(r => ({
-    left: r.left,
-    top: r.top,
-    right: r.right ?? (r.left + r.width),
-    bottom: r.bottom ?? (r.top + r.height),
-    width: r.width,
-    height: r.height
-  }));
-  rs.sort((a, b) => a.top - b.top || a.left - b.left);
-
-  const merged = [];
-  for (const r of rs) {
-    const last = merged[merged.length - 1];
-    if (!last) {
-      merged.push({ ...r });
-      continue;
-    }
-    const verticalClose = Math.abs(last.top - r.top) <= threshold;
-    const horizontalOverlap = !(r.left > last.right + threshold || r.right < last.left - threshold);
-    if (verticalClose && horizontalOverlap) {
-      // extend last to cover both
-      last.left = Math.min(last.left, r.left);
-      last.right = Math.max(last.right, r.right);
-      last.top = Math.min(last.top, r.top);
-      last.bottom = Math.max(last.bottom, r.bottom);
-      last.width = last.right - last.left;
-      last.height = last.bottom - last.top;
-    } else {
-      merged.push({ ...r });
-    }
-  }
-  return merged;
-}
-
-/* ---------- 保存処理 ---------- */
-function scheduleSave() {
-  clearTimeout(window._saveTimer);
-  window._saveTimer = setTimeout(() => {
-    saveAllNotes();
-    saveAllHighlights();
-    saveAllToServer();
-  }, 300);
-}
-
-/* ---------- Undo/Redo ---------- */
-const OP = {
-  create: (el, parent) => ({ action: "create", note: el, parent }),
-  delete: (el, parent) => ({ action: "delete", note: el, parent }),
-  move: (el, fromX, fromY, toX, toY) => ({ action: "move", note: el, fromX, fromY, toX, toY }),
-  resize: (el, fromW, fromH, toW, toH) => ({ action: "resize", note: el, fromW, fromH, toW, toH }),
-  update: (el, prev, next) => ({ action: "update", note: el, prev, next }),
-  updateColor: (el, prev, next) => ({ action: "updateColor", note: el, prev, next }),
-  updateStyle: (el, prev, next) => ({ action: "updateStyle", note: el, prev, next }),
-};
-
-// Undo/Redo 対応のノート操作関数
-function exec(op) {
-  const note = op.note;
-  switch (op.action) {
-    case "create":
-      console.log("exec create:", note);
-      $("noteLayer").appendChild(note);
-      break;
-
-    case "delete":
-      console.log("removing note:", note);
-      note.remove();
-      break;
-
-    case "move":
-      note.style.left = op.toX + "px";
-      note.style.top = op.toY + "px";
-      break;
-
-    case "resize":
-      note.style.width = op.toW + "px";
-      note.style.height = op.toH + "px";
-      break;
-
-    case "update":
-      note.textContent = op.next;
-      break;
-
-    case "updateColor":
-      const color = op.next;
-      note.dataset.color = color;
-      const c = highlightColors[color];
-      note.style.backgroundColor = c.bg;
-      note.style.border = `1px solid ${c.border}`;
-      break;
-
-    case "updateStyle":
-      if (op.next.fontSize) {
-        note.style.fontSize = op.next.fontSize + "px";
-        note.dataset.fontSize = op.next.fontSize;
-      }
-      if (op.next.color) {
-        note.style.color = op.next.color;
-        note.dataset.color = op.next.color;
-      }
-      break;
-
-    default:
-      console.warn("Unknown op:", op);
-  }
-}
-
-// 操作の逆バージョンを作る関数
-function invert(op) {
-  const inv = { ...op };
-  switch (op.action) {
-    case "create":
-      inv.action = "delete";
-      break;
-    case "delete":
-      inv.action = "create";
-      break;
-    case "move":
-      [inv.fromX, inv.toX] = [op.toX, op.fromX];
-      [inv.fromY, inv.toY] = [op.toY, op.fromY];
-      break;
-    case "resize":
-      [inv.fromW, inv.toW] = [op.toW, op.fromW];
-      [inv.fromH, inv.toH] = [op.toH, op.fromH];
-      break;
-    case "update":
-    case "updateColor":
-      [inv.prev, inv.next] = [op.next, op.prev];
-      break;
-    case "updateStyle":
-      [inv.prev, inv.next] = [op.next, op.prev];
-      break;
-  }
-  return inv;
-}
-
-// 操作の実行
-function doOp(op) {
-  console.log("doOp called:", op);
-  exec(op);
-  state.undoStack.push(invert(op));
-  state.redoStack.length = 0;
-  scheduleSave();
-  if (op.note?.classList.contains("highlight")) saveAllHighlights();
-}
-
-// 元に戻す ＆ やり直す
-function undo() {
-  const op = state.undoStack.pop();
-  if (!op) return;
-  console.log("undo op:", op);
-  exec(op);
-  state.redoStack.push(invert(op));
-  scheduleSave();
-}
-
-function redo() {
-  const op = state.redoStack.pop();
-  if (!op) return;
-  console.log("redo op:", op);
-  exec(op);
-  state.undoStack.push(invert(op));
-  scheduleSave();
-}
-
 /* ---------- 選択処理 ---------- */
-function select(n) {
+export function select(n) {
   if (state.selected) {
     if (state.selected.classList.contains("highlight")) {
       const colorName = state.selected.dataset.color || "yellow";
@@ -495,32 +298,6 @@ if (viewerContainer) {
   new ResizeObserver(() => updateNotePositions()).observe(viewerContainer);
 }
 
-/* ---------- 共通復元，再配置 ---------- */
-// updateNotePositions()
-function updateNotePositions() {
-  document.querySelectorAll(".note, .highlight").forEach(el => {
-    const page = parseInt(el.dataset.page);
-    const pdfX = parseFloat(el.dataset.x);
-    const pdfY = parseFloat(el.dataset.y);
-    const pdfW = parseFloat(el.dataset.w);
-    const pdfH = parseFloat(el.dataset.h);
-    const pageView = PDFViewerApplication.pdfViewer.getPageView(page - 1);
-    if (!pageView) return;
-    const vp = pageView.viewport;
-    const [viewX, viewY] = vp.convertToViewportPoint(pdfX, pdfY);
-
-    el.style.left = `${viewX + pageView.div.offsetLeft}px`;
-    el.style.top = `${viewY + pageView.div.offsetTop}px`;
-    el.style.width = `${pdfW * vp.scale}px`;
-    el.style.height = `${pdfH * vp.scale}px`;
-
-    if (el.classList.contains("highlight") && el.dataset.text === "" && !el.dataset.draggable) {
-      makeHighlightDraggableAndResizable(el, pageView);
-      el.dataset.draggable = "true";
-    }
-  });
-}
-
 /* ---------- ハイライト選択範囲確認 & ノート紐付け ---------- */
 document.addEventListener("mouseup", () => {
   const selection = window.getSelection();
@@ -529,7 +306,7 @@ document.addEventListener("mouseup", () => {
   // ハイライト処理
   if (state.highlightMode && selectedText) {
     console.log("選択範囲を確認:", selectedText);
-    addHighlightFromSelection();
+    addHighlight();
   }
 
   // ノート紐付け処理
@@ -556,7 +333,7 @@ document.addEventListener("mouseup", () => {
 });
 
 /* ---------- 紐付けモード制御 ---------- */
-function setHighlightSelectable(selectable) {
+export function setHighlightSelectable(selectable) {
   const highlights = document.querySelectorAll(".highlight");
   highlights.forEach(h => {
     // 紐付けモード中だけ透過させる（PDF下のテキストを選択できるように）
@@ -571,33 +348,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btn.addEventListener("click", showSidebar);
 });
-
-/* ---------- 一括削除ボタン ---------- */
-function createDeleteButton() {
-  const btn = document.getElementById("deleteButton");
-  if (!btn) return;
-
-  btn.onclick = () => {
-    if (!confirm("すべてのテキストボックスとハイライトを削除します。\n削除後は元に戻せません。よろしいですか？")) return;
-
-    const notes = [...document.querySelectorAll(".note")];
-    const highlights = [...document.querySelectorAll(".highlight")];
-
-    notes.forEach(note => {
-      doOp(OP.delete(note, note.parentElement));
-      note.remove();
-    });
-
-    highlights.forEach(hl => {
-      doOp(OP.delete(hl, hl.parentElement));
-      hl.remove();
-    });
-
-    select(null);
-
-    scheduleSave();
-  };
-}
 
 // /* ---------- 吹き出しボタン関連 ---------- */
 // 💬イベント処理
@@ -622,73 +372,10 @@ PDFViewerApplication.eventBus.on("pagerendered", () => {
   }
 });
 
-/* ---------- メッセージ表示するための関数 ---------- */
-// showLinkStatus(text)
-function showLinkStatus(text) {
-  let label = $("linkStatusLabel");
-  if (!label) {
-    label = document.createElement("div");
-    label.id = "linkStatusLabel";
-    document.body.appendChild(label);
-    label.style.position = "fixed";
-    label.style.top = "10px";
-    label.style.left = "50%";
-    label.style.transform = "translateX(-50%)";
-    label.style.padding = "8px 16px";
-    label.style.background = "rgba(0,0,0,0.7)";
-    label.style.color = "#fff";
-    label.style.borderRadius = "4px";
-    label.style.fontSize = "16px";
-    label.style.zIndex = 9999;
-    label.style.pointerEvents = "none";
-    label.style.transition = "opacity 0.3s";
-  }
-  label.textContent = text;
-  label.style.opacity = "1";
-
-  setTimeout(() => {
-    label.style.opacity = "0";
-  }, 2500);
-}
-
 // /* ---------- 検索機能起動 ---------- */
 document.getElementById("findButton").addEventListener("click", () => {
   openSearchPanel();
 });
-
-export {
-  HANDLE,
-
-  // PDF・ローカルストレージ関連
-  pdfId,
-  TEXT_KEY,
-  HIGHLIGHT_KEY,
-
-  // 色関連
-  highlightColors,
-
-  // ヘルパー関数
-  $,
-  domToPdf,
-  mergeRects,
-  scheduleSave,
-
-  // Undo/Redo 操作
-  OP,
-  exec,
-  invert,
-  doOp,
-  undo,
-  redo,
-
-  // 選択処理
-  select,
-
-  // ノート操作
-  updateNotePositions,
-  setHighlightSelectable,
-  showLinkStatus
-};
 
 /* ---------- 起動 ---------- */
 (PDFViewerApplication?.initializedPromise

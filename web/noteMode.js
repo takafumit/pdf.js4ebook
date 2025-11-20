@@ -1,19 +1,8 @@
-import {
-  state,
-  OP,
-  doOp,
-  select,
-  domToPdf,
-  $,
-  scheduleSave,
-  TEXT_KEY,
-  setHighlightSelectable,
-  showLinkStatus
-} from './noteExtension.js';
+import { state, select, domToPdf, $, TEXT_KEY, setHighlightSelectable } from './noteExtension.js';
+import { scheduleSave, showLinkStatus } from './noteAndHighlightManager.js';
+import { saveNotesToServer } from './serverStorage.js';
+import { OP, doOp } from './undoRedoManager.js';
 
-import {
-  saveNotesToServer
-} from './serverStorage.js';
 
 /* ---------- テキストボックス関連 ---------- */
 // 1. テキストボックス生成，編集
@@ -129,13 +118,12 @@ function enableDrag(note) {
         const { x, y, w, h } = domToPdf(note, pageNum);
         note.dataset.x = x; note.dataset.y = y; note.dataset.w = w; note.dataset.h = h;
 
-        doOp(OP.move(
-            note,
-            fromLeft,
-            fromTop,
-            parseFloat(note.style.left),
-            parseFloat(note.style.top)
-        ));
+        const toLeft = parseFloat(note.style.left);
+        const toTop = parseFloat(note.style.top);
+
+        if (fromLeft !== toLeft || fromTop !== toTop) {
+            doOp(OP.move(note, fromLeft, fromTop, toLeft, toTop));
+        }
 
         scheduleSave();
     };

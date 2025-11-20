@@ -2,11 +2,7 @@
 // toggleBubbleMode(), updateBubbleMode()
 
 /* ---------- グローバル設定 ---------- */
-// モードや Undo/Redo ，ローカルストレージ保存関連
-import { 
-    state,
-    $
-} from './noteExtension.js';
+import { state, $ } from './noteExtension.js';
 
 export function toggleBubbleMode() {
   const noteLayer = $("noteLayer");

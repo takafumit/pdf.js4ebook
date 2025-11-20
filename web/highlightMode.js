@@ -1,28 +1,52 @@
-import {
-  state,
-  OP,
-  doOp,
-  select,
-  mergeRects,
-  domToPdf,
-  $,
-  scheduleSave,
-  updateNotePositions,
+import { state, select, domToPdf, $, highlightColors, HIGHLIGHT_KEY } from './noteExtension.js';
+import { hideNoteColorPalette } from './noteMode.js';
+import { updateNotePositions, scheduleSave } from './noteAndHighlightManager.js';
+import { saveHighlightsToServer } from './serverStorage.js';
+import { OP, doOp } from './undoRedoManager.js';
 
-  highlightColors,
-  HIGHLIGHT_KEY
-} from './noteExtension.js';
-
-import {
-  saveHighlightsToServer
-} from './serverStorage.js';
 
 let currentHighlightColor = "yellow";
 
+/* ---------- ハイライトを複数行選択したときに1つにまとめるときに使用 ---------- */
+function mergeRects(rects, threshold = 3) {
+  const rs = rects.map(r => ({
+    left: r.left,
+    top: r.top,
+    right: r.right ?? (r.left + r.width),
+    bottom: r.bottom ?? (r.top + r.height),
+    width: r.width,
+    height: r.height
+  }));
+  rs.sort((a, b) => a.top - b.top || a.left - b.left);
+
+  const merged = [];
+  for (const r of rs) {
+    const last = merged[merged.length - 1];
+    if (!last) {
+      merged.push({ ...r });
+      continue;
+    }
+    const verticalClose = Math.abs(last.top - r.top) <= threshold;
+    const horizontalOverlap = !(r.left > last.right + threshold || r.right < last.left - threshold);
+    if (verticalClose && horizontalOverlap) {
+      // extend last to cover both
+      last.left = Math.min(last.left, r.left);
+      last.right = Math.max(last.right, r.right);
+      last.top = Math.min(last.top, r.top);
+      last.bottom = Math.max(last.bottom, r.bottom);
+      last.width = last.right - last.left;
+      last.height = last.bottom - last.top;
+    } else {
+      merged.push({ ...r });
+    }
+  }
+  return merged;
+}
+
 /* ---------- PDFテキスト上のハイライト関連 ---------- */
 // 1. ハイライト追加，選択
-// addHighlightFromSelection()，toggleHighlightSelection(hl)
-function addHighlightFromSelection() {
+// addHighlight()，toggleHighlightSelection(hl)
+function addHighlight() {
   const selection = window.getSelection();
   if (!state.highlightMode || !selection.rangeCount) return;
 
@@ -347,13 +371,12 @@ function makeHighlightDraggableAndResizable(highlight, pageView) {
     highlight.dataset.x = pdfX;
     highlight.dataset.y = pdfY;
 
-    doOp(OP.move(
-      highlight,
-      startLeft,
-      startTop,
-      parseFloat(highlight.style.left),
-      parseFloat(highlight.style.top)
-    ));
+    const toLeft = parseFloat(highlight.style.left);
+    const toTop = parseFloat(highlight.style.top);
+
+    if (startLeft !== toLeft || startTop !== toTop) {
+      doOp(OP.move(highlight, startLeft, startTop, toLeft, toTop));
+    }
 
     saveAllHighlights();
     saveHighlightsToServer();
@@ -425,7 +448,7 @@ function makeHighlightDraggableAndResizable(highlight, pageView) {
 }
 
 export {
-  addHighlightFromSelection,
+  addHighlight,
   toggleHighlightSelection,
   showHighlightColorPalette,
   hideHighlightColorPalette,

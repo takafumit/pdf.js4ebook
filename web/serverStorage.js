@@ -3,9 +3,10 @@
 // restoreNotesFromData(notes), restoreHighlightsFromData(highlights)
 // loadNotesFromServer(), loadHighlightsFromServer(), loadAllFromServer()
 
-import { select, showLinkStatus, updateNotePositions } from './noteExtension.js';
+import { select } from './noteExtension.js';
 import { enableDrag, enableResize, commit, saveAllNotes, showNoteTextStylePalette } from './noteMode.js';
 import { toggleHighlightSelection } from './highlightMode.js';
+import { updateNotePositions, showLinkStatus } from './noteAndHighlightManager.js';
 
 /* ---------- グローバル設定 ---------- */
 const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
