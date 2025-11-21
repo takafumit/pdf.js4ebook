@@ -110,6 +110,7 @@
   --toolbarButton-show-icon: url(images/original-showNote.svg);
   --toolbarButton-saveAnnotation-icon: url(images/original-download.svg);
   --toolbarButton-loadAnnotation-icon: url(images/original-load.svg);
+  --toolbarButton-freehand-icon: url(images/original-freehand.svg);
 
   --toolbarButton-editorSignature-icon: url(images/toolbarButton-editorSignature.svg);
   --toolbarButton-menuArrow-icon: url(images/toolbarButton-menuArrow.svg);
@@ -351,6 +352,10 @@ body {
   z-index: 500;         /* ノートより下 */
 }
 
+.freehand.selected {
+    stroke: blue;
+}
+
 .toolbarButton {
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
@@ -388,6 +393,9 @@ body {
 #addHighlightButton::before {
   mask-image: var(--toolbarButton-editorHighlight-icon);
 }
+#addFreeHighlightButton::before {
+  mask-image: var(--toolbarButton-freehand-icon);
+}
 #deleteButton::before{
   mask-image: var(--editor-toolbar-delete-image);
 }
@@ -405,6 +413,9 @@ body {
 }
 #findButton::before {
   mask-image: var(--toolbarButton-search-icon);
+}
+#addFreehandButton::before{
+  mask-image: var(--toolbarButton-editorInk-icon);
 }
 
 /* もともと表示されている注釈機能を非表示に */

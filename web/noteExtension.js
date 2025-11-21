@@ -11,6 +11,7 @@ import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, sav
 import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './noteAndHighlightManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
+import { freehandMode } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
@@ -18,6 +19,7 @@ export const state = {
   textMode: false,
   highlightMode: false,
   freeHighlightMode: false,
+  freehandMode: false,
   freerect: null,
   freerectStare: null,
   selectedPageView: null,
@@ -89,6 +91,7 @@ function initFull() {
   const noteBtn = $("addNoteButton");
   const highlightBtn = $("addHighlightButton");
   const freeHighlightBtn = $("addFreeHighlightButton");
+  const freehandBtn = $("addFreehandButton");
 
   // --- モードリセット関数 ---
   function resetModes(except = "") {
@@ -129,7 +132,11 @@ function initFull() {
     highlightBtn.classList.toggle("toggled", state.highlightMode);
     vc.style.cursor = state.highlightMode ? "text" : "default";
 
-    if (state.highlightMode) showHighlightColorPalette(highlightBtn);
+    if (state.highlightMode) {
+      showHighlightColorPalette(highlightBtn);
+    } else {
+      hideHighlightColorPalette();
+    }
   };
 
   // --- フリーハイライトボタン ---
@@ -145,6 +152,20 @@ function initFull() {
     vc.style.cursor = state.freeHighlightMode ? "crosshair" : "default";
 
     if (state.freeHighlightMode) showHighlightColorPalette(ev.target, null);
+  };
+
+  freehandMode.init();
+  freehandBtn.onclick = () => {
+    resetModes("freehand");
+
+    state.freehandMode = !state.freehandMode;
+    freehandBtn.classList.toggle("toggled", state.freehandMode);
+
+    if (state.freehandMode) {
+      freehandMode.enable();
+    } else {
+      freehandMode.disable();
+    }
   };
 
   // --- ページクリック処理 ---
