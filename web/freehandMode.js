@@ -3,6 +3,7 @@
 import { state, select, $, domToPdf } from "./noteExtension.js";
 // Undo/Redo のために必要であればコメントアウトを解除してください
 // import { OP, doOp } from "./undoRedoManager.js"; 
+// import { saveFreehandToServer } from './serverStorage.js';
 
 /* ---------- 定義と設定 ---------- */
 const strokes = [];
@@ -317,6 +318,18 @@ export const freehandMode = {
         }
 
         console.log("freehand group created:", group.dataset.id);
+        // saveFreehandToServer(group);
+        const freehandData = strokesArray.map(s => ({
+            id: s.id || `fh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            page: s.page,
+            x: pdfX,
+            y: pdfY,
+            w: pdfW,
+            h: pdfH,
+            color: s.colorKey || defaultColorKey,
+            pathData: s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
+        }));
+        saveFreehandsLocally(freehandData);
     },
 
     computeBoundingBox(strokesArray) {
@@ -469,12 +482,6 @@ export const freehandMode = {
             return;
         }
 
-        // 2. 選択を解除し、スタイルをクリアする
-        const currentSelectedGroup = state.selected;
-
-        // 前の回答で定義した選択解除時のスタイルクリア関数を呼び出す
-        this._clearSelectedStyle(currentSelectedGroup);
-
         select(null); // 選択状態を解除 (state.selected を null にする関数を想定)
         this.hideColorPalette(); // パレットを非表示にする
     },
@@ -622,3 +629,94 @@ export const freehandMode = {
         });
     }
 };
+
+// フリーハンドをローカルストレージに保存
+export function saveFreehandsLocally(freehands) {
+    try {
+        localStorage.setItem("freehands", JSON.stringify(freehands));
+        console.log("保存成功:", freehands);
+    } catch (e) {
+        console.error("保存失敗:", e);
+    }
+}
+
+export function loadFreehandsFromLocal() {
+    const saved = localStorage.getItem("freehands");
+    if (!saved) return;
+
+    let freehands;
+    try {
+        freehands = JSON.parse(saved);
+    } catch (e) {
+        console.error("フリーハンド復元失敗:", e);
+        return;
+    }
+
+    const noteLayer = document.getElementById("noteLayer");
+    if (!noteLayer || typeof PDFViewerApplication === 'undefined') return;
+
+    freehands.forEach(fh => {
+        const pageNum = fh.page;
+        const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+        if (!pageView) return;
+
+        const vp = pageView.viewport;
+
+        // PDF座標 -> ビューポート座標
+        const [viewX, viewY] = vp.convertToViewportPoint(fh.x, fh.y);
+        const domW = fh.w * vp.scale;
+        const domH = fh.h * vp.scale;
+
+        // グループ div を作成
+        const group = document.createElement("div");
+        group.className = "freehand-group";
+        group.dataset.id = fh.id || `fh-${Date.now()}`;
+        group.dataset.page = pageNum;
+        group.dataset.x = fh.x;
+        group.dataset.y = fh.y;
+        group.dataset.w = fh.w;
+        group.dataset.h = fh.h;
+        group.dataset.color = fh.color || "red";
+
+        Object.assign(group.style, {
+            position: "absolute",
+            left: `${viewX + pageView.div.offsetLeft}px`,
+            top: `${viewY + pageView.div.offsetTop}px`,
+            width: `${domW}px`,
+            height: `${domH}px`,
+            border: `1px solid rgba(0,0,0,0.2)`,
+            background: `rgba(255,255,255,0)`,
+            cursor: "move",
+            zIndex: 2000,
+            pointerEvents: "auto"
+        });
+
+        // SVG 内部にパスを作る
+        const svgNS = "http://www.w3.org/2000/svg";
+        const innerSvg = document.createElementNS(svgNS, "svg");
+        innerSvg.setAttribute("width", domW);
+        innerSvg.setAttribute("height", domH);
+        innerSvg.style.display = "block";
+        innerSvg.style.pointerEvents = "none";
+        innerSvg.setAttribute("viewBox", `0 0 ${domW} ${domH}`);
+        group.appendChild(innerSvg);
+
+        // パスを作る
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("stroke", freehandColors[fh.color] || freehandColors.red);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke-width", 2);
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        path.style.pointerEvents = "none";
+        path.setAttribute("d", fh.pathData);
+        innerSvg.appendChild(path);
+
+        noteLayer.appendChild(group);
+
+        // ドラッグ・リサイズを有効化
+        freehandMode.makeGroupDraggableAndResizable(group, pageView);
+    });
+
+    console.log("フリーハンド復元完了:", freehands.length, "件");
+}

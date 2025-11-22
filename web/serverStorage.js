@@ -7,6 +7,7 @@ import { select } from './noteExtension.js';
 import { enableDrag, enableResize, commit, saveAllNotes, showNoteTextStylePalette } from './noteMode.js';
 import { toggleHighlightSelection } from './highlightMode.js';
 import { updateNotePositions, showLinkStatus } from './noteAndHighlightManager.js';
+import { freehandMode } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
@@ -81,6 +82,7 @@ function saveHighlightsToServer() {
 function saveAllToServer() {
   saveNotesToServer();
   saveHighlightsToServer();
+  // saveFreehandToServer();
 }
 
 // ボタンから直接保存
@@ -231,6 +233,7 @@ function loadHighlightsFromServer() {
 function loadAllFromServer() {
   loadNotesFromServer();
   loadHighlightsFromServer();
+  // loadFreehandsFromServer();
 }
 
 // ボタンから復元する場合
@@ -238,6 +241,84 @@ document.getElementById("loadAnnotationButton").addEventListener("click", () => 
   loadAllFromServer();
   showLinkStatus("ローカルホストから復元しました");
 });
+
+// function saveFreehandToServer() {
+//     const groups = Array.from(document.querySelectorAll(".freehand-group")).map(g => ({
+//         id: g.dataset.id,
+//         page: parseInt(g.dataset.page),
+//         x: parseFloat(g.dataset.x),
+//         y: parseFloat(g.dataset.y),
+//         w: parseFloat(g.dataset.w),
+//         h: parseFloat(g.dataset.h),
+//         color: g.dataset.color || "red",
+//         // SVG内のパスを文字列として保存
+//         pathData: JSON.stringify(Array.from(g.querySelectorAll("path")).map(p => p.getAttribute("d")))
+//     }));
+
+//     fetch("http://localhost:3000/freehands", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({ freehands: groups })
+//     })
+//     .then(res => res.json())
+//     .then(data => console.log("🖌 フリーハンドをサーバーに保存:", data))
+//     .catch(err => console.error("フリーハンド保存エラー:", err));
+// }
+
+// function restoreFreehandFromData(freehands) {
+//     const noteLayer = document.getElementById("noteLayer");
+//     if (!noteLayer || !Array.isArray(freehands)) return;
+
+//     freehands.forEach(g => {
+//         const pageView = PDFViewerApplication.pdfViewer.getPageView(g.page - 1);
+//         if (!pageView) return;
+//         const vp = pageView.viewport;
+
+//         const group = document.createElement("div");
+//         group.className = "freehand-group";
+//         Object.assign(group.dataset, g);
+
+//         const [viewX, viewY] = vp.convertToViewportPoint(g.x, g.y);
+//         Object.assign(group.style, {
+//             position: "absolute",
+//             left: `${viewX + pageView.div.offsetLeft}px`,
+//             top: `${viewY + pageView.div.offsetTop}px`,
+//             width: `${g.w * vp.scale}px`,
+//             height: `${g.h * vp.scale}px`,
+//             cursor: "move",
+//             zIndex: 2000
+//         });
+
+//         const svgNS = "http://www.w3.org/2000/svg";
+//         const innerSvg = document.createElementNS(svgNS, "svg");
+//         innerSvg.setAttribute("width", g.w * vp.scale);
+//         innerSvg.setAttribute("height", g.h * vp.scale);
+//         innerSvg.setAttribute("viewBox", `0 0 ${g.w * vp.scale} ${g.h * vp.scale}`);
+//         group.appendChild(innerSvg);
+
+//         g.paths.forEach(d => {
+//             const path = document.createElementNS(svgNS, "path");
+//             path.setAttribute("d", d);
+//             path.setAttribute("stroke", g.color);
+//             path.setAttribute("stroke-width", 2);
+//             path.setAttribute("fill", "none");
+//             innerSvg.appendChild(path);
+//         });
+
+//         noteLayer.appendChild(group);
+
+//         freehandMode.makeGroupDraggableAndResizable(group, pageView);
+//     });
+
+//     console.log("🖌 フリーハンド復元完了:", freehands.length, "件");
+// }
+
+// function loadFreehandsFromServer() {
+//     fetch("http://localhost:3000/freehands")
+//         .then(res => res.json())
+//         .then(data => restoreFreehandFromData(data))
+//         .catch(err => console.error("フリーハンド取得エラー:", err));
+// }
 
 export {
   saveNotesToServer,

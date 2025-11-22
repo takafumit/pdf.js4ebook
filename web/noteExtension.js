@@ -11,7 +11,7 @@ import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, sav
 import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './noteAndHighlightManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
-import { freehandMode } from './freehandMode.js';
+import { freehandMode, loadFreehandsFromLocal } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
@@ -432,5 +432,6 @@ document.getElementById("findButton").addEventListener("click", () => {
     initFull();
     PDFViewerApplication.eventBus.on("pagesloaded", () => {
       loadAllFromServer();
+      loadFreehandsFromLocal();
     });
   });
