@@ -386,10 +386,34 @@ if (viewerContainer) {
   new ResizeObserver(() => updateBubblePositions()).observe(viewerContainer);
 }
 
+PDFViewerApplication.eventBus.on("sidebarviewchanged", () => {
+  freehandMode.redrawAll();
+  setTimeout(freehandMode.redrawAll, 100);
+});
+
+if (viewerContainer) {
+  new ResizeObserver(() => freehandMode.redrawAll()).observe(viewerContainer);
+}
+
 PDFViewerApplication.eventBus.on("pagerendered", () => {
   const noteLayer = $("noteLayer");
   if (noteLayer.dataset.bubbleMode === "true") {
     updateBubblePositions();
+  }
+});
+
+document.getElementById("noteLayer").addEventListener("click", (e) => {
+  // freehand-group 上のクリックなら何もしない
+  if (e.target.closest(".freehand-group")) return;
+
+  // ハイライトなど他のノート要素がある場合も除外したければ必要に応じてここで判定
+
+  // 選択解除
+  select(null);
+
+  // パレットも消す
+  if (freehandMode.hideColorPalette) {
+    freehandMode.hideColorPalette();
   }
 });
 
