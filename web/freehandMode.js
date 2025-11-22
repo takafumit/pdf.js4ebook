@@ -1,6 +1,6 @@
 // freehandMode.js
 
-import { state, select, $, domToPdf } from "./noteExtension.js";
+import { state, select, FREEHAND_KEY } from "./noteExtension.js";
 // Undo/Redo のために必要であればコメントアウトを解除してください
 // import { OP, doOp } from "./undoRedoManager.js"; 
 // import { saveFreehandToServer } from './serverStorage.js';
@@ -319,17 +319,24 @@ export const freehandMode = {
 
         console.log("freehand group created:", group.dataset.id);
         // saveFreehandToServer(group);
-        const freehandData = strokesArray.map(s => ({
-            id: s.id || `fh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            page: s.page,
+        const pathsData = strokesArray.map(s =>
+            s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
+        );
+
+        const singleGroupData = {
+            id: group.dataset.id,
+            page: pageNum,
             x: pdfX,
             y: pdfY,
             w: pdfW,
             h: pdfH,
-            color: s.colorKey || defaultColorKey,
-            pathData: s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
-        }));
-        saveFreehandsLocally(freehandData);
+            color: groupColorKey,
+            // 複数のパスデータを配列として保存する
+            paths: pathsData // ⬅️ ここを配列にする
+        };
+
+        // 既存のフリーハンドデータを取得し、新しいグループデータを追加して保存し直す
+        saveGroupLocally(singleGroupData);
     },
 
     computeBoundingBox(strokesArray) {
@@ -588,6 +595,7 @@ export const freehandMode = {
 
     /* ---------- 再描画処理 ---------- */
     redrawAll() {
+        console.log("🔥 redrawAll が実行されました！");
         if (typeof PDFViewerApplication === 'undefined' || !PDFViewerApplication.pdfViewer) return;
 
         document.querySelectorAll(".freehand-group").forEach(group => {
@@ -627,96 +635,214 @@ export const freehandMode = {
                 this._applySelectedStyle(group);
             }
         });
+
+        document.querySelectorAll(".freehand-group").forEach(group => {
+            const pageNum = parseInt(group.dataset.page);
+
+            // ページビューが取得できない場合はスキップ
+            const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+            if (!pageView) return;
+
+            // makeGroupDraggableAndResizable が呼ばれていない場合、ここで初期化
+            if (!group.querySelector(".freehand-resize-handle")) {
+                this.makeGroupDraggableAndResizable(group, pageView);
+                console.log(`🔨 ページ ${pageNum} のグループにドラッグ機能を初期化しました。`);
+            }
+
+            // **最も重要なチェック:**
+            // noteLayer の子要素になっていない場合、PDFビューアがDOMをクリアした可能性があるため再挿入
+            // ページの noteLayer を取得し直す
+            const noteLayer = pageView.div.querySelector('.annotationLayer #noteLayer');
+            if (noteLayer && !noteLayer.contains(group)) {
+                noteLayer.appendChild(group);
+                console.log(`✅ ページ ${pageNum} のグループを noteLayer に再挿入しました！`);
+            }
+        });
     }
 };
 
 // フリーハンドをローカルストレージに保存
-export function saveFreehandsLocally(freehands) {
+// export function saveFreehandsLocally(freehands) {
+//     try {
+//         localStorage.setItem(FREEHAND_KEY, JSON.stringify({ freehands }));
+//         console.log("📝 フリーハンド保存成功:", freehands.length, "件");
+//     } catch (e) {
+//         console.error("💾 フリーハンド保存失敗:", e);
+//     }
+// }
+export function saveGroupLocally(newGroupData) {
+    let currentData = { freehands: [] };
+    const raw = localStorage.getItem(FREEHAND_KEY);
+
+    // 既存のデータを取得（ストロークではなくグループの配列を想定）
+    if (raw) {
+        try {
+            currentData = JSON.parse(raw);
+        } catch (e) {
+            console.error("既存データのパースエラー。新規作成します。", e);
+        }
+    }
+
+    // 現在の配列から、同じIDのグループがあれば削除し、新しいグループを追加する
+    currentData.freehands = currentData.freehands.filter(g => g.id !== newGroupData.id);
+    currentData.freehands.push(newGroupData);
+
     try {
-        localStorage.setItem("freehands", JSON.stringify(freehands));
-        console.log("保存成功:", freehands);
+        localStorage.setItem(FREEHAND_KEY, JSON.stringify(currentData));
+        console.log("📝 グループ保存成功:", currentData.freehands.length, "件のグループ");
     } catch (e) {
-        console.error("保存失敗:", e);
+        console.error("💾 グループ保存失敗:", e);
     }
 }
 
-export function loadFreehandsFromLocal() {
-    const saved = localStorage.getItem("freehands");
-    if (!saved) return;
+export function restoreFreehands() {
+    const raw = localStorage.getItem(FREEHAND_KEY);
+    console.log(FREEHAND_KEY, raw);
+    if (!raw) return;
 
-    let freehands;
-    try {
-        freehands = JSON.parse(saved);
-    } catch (e) {
-        console.error("フリーハンド復元失敗:", e);
-        return;
+    // let parsed;
+    // try {
+    //     parsed = JSON.parse(raw);
+    // } catch {
+    //     return;
+    // }
+
+    let parsed;
+
+    if (raw) {
+        console.log(`✅ ${FREEHAND_KEY} のデータが見つかりました。`);
+        console.log("------------------------------------------");
+
+        // 2. 取得した生データ（文字列）を出力
+        console.log("Raw String Data:", raw);
+
+        try {
+            // 3. JSONとしてパース（構造化）を試みる
+            parsed = JSON.parse(raw);
+
+            console.log("Parsed JSON Object:", parsed);
+
+            // 4. データの中身（例: freehands配列の長さ）を出力
+            const freehandCount = parsed.freehands ? parsed.freehands.length : 0;
+            console.log("復元されるフリーハンドの数:", freehandCount);
+
+        } catch (e) {
+            // 5. JSONパースに失敗した場合のエラーを出力
+            console.error("❌ ERROR: JSON形式が不正です。:", e);
+        }
+    } else {
+        console.log(`❌ ${FREEHAND_KEY} のデータは localStorage に見つかりませんでした。`);
     }
 
+    const freehands = parsed.freehands;
+    if (!Array.isArray(freehands) || freehands.length === 0) return;
+
     const noteLayer = document.getElementById("noteLayer");
-    if (!noteLayer || typeof PDFViewerApplication === 'undefined') return;
+    if (!noteLayer) return;
 
     freehands.forEach(fh => {
-        const pageNum = fh.page;
-        const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
+        const pageView = PDFViewerApplication.pdfViewer.getPageView(fh.page - 1);
         if (!pageView) return;
 
         const vp = pageView.viewport;
-
-        // PDF座標 -> ビューポート座標
         const [viewX, viewY] = vp.convertToViewportPoint(fh.x, fh.y);
-        const domW = fh.w * vp.scale;
-        const domH = fh.h * vp.scale;
 
-        // グループ div を作成
         const group = document.createElement("div");
         group.className = "freehand-group";
-        group.dataset.id = fh.id || `fh-${Date.now()}`;
-        group.dataset.page = pageNum;
-        group.dataset.x = fh.x;
-        group.dataset.y = fh.y;
-        group.dataset.w = fh.w;
-        group.dataset.h = fh.h;
-        group.dataset.color = fh.color || "red";
+        Object.assign(group.dataset, { ...fh });
 
         Object.assign(group.style, {
             position: "absolute",
             left: `${viewX + pageView.div.offsetLeft}px`,
             top: `${viewY + pageView.div.offsetTop}px`,
-            width: `${domW}px`,
-            height: `${domH}px`,
-            border: `1px solid rgba(0,0,0,0.2)`,
-            background: `rgba(255,255,255,0)`,
+            width: `${fh.w * vp.scale}px`,
+            height: `${fh.h * vp.scale}px`,
             cursor: "move",
+            pointerEvents: "auto",
             zIndex: 2000,
-            pointerEvents: "auto"
+            border: "2px solid blue"
         });
 
-        // SVG 内部にパスを作る
         const svgNS = "http://www.w3.org/2000/svg";
         const innerSvg = document.createElementNS(svgNS, "svg");
-        innerSvg.setAttribute("width", domW);
-        innerSvg.setAttribute("height", domH);
-        innerSvg.style.display = "block";
+        innerSvg.setAttribute("width", fh.w * vp.scale);
+        innerSvg.setAttribute("height", fh.h * vp.scale);
+        innerSvg.setAttribute("viewBox", `0 0 ${fh.w} ${fh.h}`);
         innerSvg.style.pointerEvents = "none";
-        innerSvg.setAttribute("viewBox", `0 0 ${domW} ${domH}`);
+
+        const path = document.createElementNS(svgNS, "path");
+
+        // group.style.left/top から、グループの左上隅のDOM絶対座標（px）を取得
+        const groupLeft = parseFloat(group.style.left);
+        const groupTop = parseFloat(group.style.top);
+
+        // 🚨 修正: データ構造を統一し、パスが存在しない場合のフォールバックを強化 🚨
+        // fh.paths (新しい配列) があればそれを使う。なければ fh.pathData (古い単一パス) を配列にする。
+        const pathsToRestore = fh.paths || (fh.pathData ? [fh.pathData] : []);
+
+        pathsToRestore.forEach(pathDataString => {
+            // ⚠️ 強化されたチェック ⚠️: null, undefined, 空文字列、数値などの無効な値をスキップ
+            if (typeof pathDataString !== 'string' || pathDataString.length === 0) {
+                return;
+            }
+
+            // パスデータ（noteLayer絶対座標）をグループのviewBox座標系（PDF相対座標）に変換
+            const relativePathData = pathDataString.split(' ').map(segment => {
+                const command = segment.charAt(0);
+                if (segment.length < 2) return segment; // 短すぎるセグメントはそのまま返す
+                const coords = segment.slice(1);
+
+                if (command === 'M' || command === 'L') {
+                    // x, y は保存された絶対 DOM 座標
+                    let [x, y] = coords.split(',').map(parseFloat);
+
+                    // 1. DOM座標の差分を計算: (保存された絶対座標 - グループの絶対位置)
+                    const domRelativeX = x - groupLeft;
+                    const domRelativeY = y - groupTop;
+                    
+                    // 2. DOM座標の差分をスケールで割って、viewBoxの単位（PDF座標）にする 👈 ここが重要
+                    const pdfRelativeX = domRelativeX / vp.scale;
+                    const pdfRelativeY = domRelativeY / vp.scale;
+
+                    return `${command}${pdfRelativeX},${pdfRelativeY}`;
+                }
+                return segment;
+            }).join(' ');
+
+            // パス要素を作成し、SVGに追加
+            const path = document.createElementNS(svgNS, "path");
+            path.setAttribute("d", relativePathData);
+            path.setAttribute("stroke", freehandColors[fh.color] || freehandColors.red);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke-width", 2);
+
+            innerSvg.appendChild(path);
+        });
+
         group.appendChild(innerSvg);
 
-        // パスを作る
-        const path = document.createElementNS(svgNS, "path");
-        path.setAttribute("stroke", freehandColors[fh.color] || freehandColors.red);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke-width", 2);
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        path.style.pointerEvents = "none";
-        path.setAttribute("d", fh.pathData);
-        innerSvg.appendChild(path);
+        group.addEventListener("click", ev => {
+            ev.stopPropagation();
+            select(group);
+            freehandMode.showColorPalette(group);
+        });
 
         noteLayer.appendChild(group);
+        // ★★★ 確認用ログを追加 ★★★
+        const isChildOfNoteLayer = noteLayer.contains(group);
+        console.log(`✅ Group作成とDOM追加確認 (ページ ${fh.page}):`,
+            `noteLayerの子要素か？ -> ${isChildOfNoteLayer ? 'YES' : 'NO'}`,
+            '追加されたグループ要素:', group);
+        // ★★★ ログ追加ここまで ★★★
 
-        // ドラッグ・リサイズを有効化
-        freehandMode.makeGroupDraggableAndResizable(group, pageView);
+        console.log(group.style.left, group.style.top, group.style.width, group.style.height);
+        console.log(innerSvg.getAttribute("viewBox"));
+        console.log(path.getAttribute("d"));
+        console.log(group, group.offsetWidth, group.offsetHeight);
+        console.log(innerSvg, innerSvg.getBoundingClientRect());
+
+        // freehandMode.makeGroupDraggableAndResizable(group, pageView);
     });
 
-    console.log("フリーハンド復元完了:", freehands.length, "件");
+    console.log("🖋 復元したフリーハンド:", freehands.length, "件");
 }

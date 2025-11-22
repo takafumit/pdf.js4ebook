@@ -11,7 +11,7 @@ import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, sav
 import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './noteAndHighlightManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
-import { freehandMode, loadFreehandsFromLocal } from './freehandMode.js';
+import { freehandMode, restoreFreehands } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
@@ -34,6 +34,7 @@ export const HANDLE = 12;
 export const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
 export const TEXT_KEY = `notes::${pdfId}`;
 export const HIGHLIGHT_KEY = `highlights::${pdfId}`;
+export const FREEHAND_KEY = `freehands::${pdfId}`;
 
 /* ---------- 色定義 ---------- */
 export const highlightColors = {
@@ -432,6 +433,11 @@ document.getElementById("findButton").addEventListener("click", () => {
     initFull();
     PDFViewerApplication.eventBus.on("pagesloaded", () => {
       loadAllFromServer();
-      loadFreehandsFromLocal();
+      // 🚨 修正点: restoreFreehands を setTimeout で遅延させる 🚨
+      setTimeout(() => {
+        console.log("restoreFreehands start (Delayed)");
+        restoreFreehands();
+        console.log("restoreFreehands end (Delayed)");
+      }, 200); // 100ミリ秒の遅延（環境に応じて調整可能）
     });
   });
