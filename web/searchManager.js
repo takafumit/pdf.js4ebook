@@ -34,6 +34,31 @@ function openSearchPanel() {
   closeBtn.onclick = () => popup.remove();
   popup.appendChild(closeBtn);
 
+  // ---- ドラッグで移動可能にする ----
+  let isDragging = false;
+  let startX, startY;
+
+  popup.addEventListener("mousedown", (e) => {
+    // 閉じるボタンや入力欄などは除外
+    if (e.target === closeBtn || e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") return;
+    isDragging = true;
+    startX = e.clientX - popup.offsetLeft;
+    startY = e.clientY - popup.offsetTop;
+    popup.style.cursor = "move";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    popup.style.left = `${e.clientX - startX}px`;
+    popup.style.top = `${e.clientY - startY}px`;
+    popup.style.right = "auto"; // right固定を解除
+  });
+
+  document.addEventListener("mouseup", () => {
+    isDragging = false;
+    popup.style.cursor = "default";
+  });
+
   // 検索入力 + ボタン用コンテナ
   const inputContainer = document.createElement("div");
   inputContainer.style.display = "flex";

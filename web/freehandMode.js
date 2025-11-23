@@ -528,12 +528,17 @@ export const freehandMode = {
     delBtn.onclick = e => {
       e.stopPropagation();
       this.hideColorPalette();
-      // TODO: doOp(OP.delete(baseEl, baseEl.parentElement));
-      if (baseEl && baseEl.parentElement) {
-        baseEl.parentElement.removeChild(baseEl);
+
+      if (baseEl) {
+        const id = baseEl.dataset.id;
+        baseEl.remove();
         select(null);
+
+        deleteGroupLocally(id);
+        freehandMode.redrawAll();
       }
     };
+
     palette.appendChild(delBtn);
 
     // カラーボタン
@@ -661,15 +666,17 @@ export const freehandMode = {
   }
 };
 
-// フリーハンドをローカルストレージに保存
-// export function saveFreehandsLocally(freehands) {
-//     try {
-//         localStorage.setItem(FREEHAND_KEY, JSON.stringify({ freehands }));
-//         console.log("📝 フリーハンド保存成功:", freehands.length, "件");
-//     } catch (e) {
-//         console.error("💾 フリーハンド保存失敗:", e);
-//     }
-// }
+export function deleteGroupLocally(groupId) {
+  const raw = localStorage.getItem(FREEHAND_KEY);
+  if (!raw) return;
+
+  let currentData = JSON.parse(raw);
+  currentData.freehands = currentData.freehands.filter(g => g.id !== groupId);
+
+  localStorage.setItem(FREEHAND_KEY, JSON.stringify(currentData));
+  console.log("🗑 削除保存完了:", groupId);
+}
+
 export function saveGroupLocally(newGroupData) {
   let currentData = { freehands: [] };
   const raw = localStorage.getItem(FREEHAND_KEY);
