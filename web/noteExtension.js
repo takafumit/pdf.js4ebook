@@ -333,14 +333,10 @@ document.addEventListener("mouseup", () => {
 
   // ノート紐付け処理
   if (state.linkingNote && selectedText) {
-    const range = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-
     // 紐付けテキストを保存
     state.linkingNote.dataset.linkedText = selectedText;
-    
-    console.log("ノートに紐付け:", selectedText);
-    showLinkStatus("紐付け終了");
 
+    console.log("ノートに紐付け:", selectedText);
     state.linkingNote = null;
 
     // マウスカーソルを戻す
@@ -350,39 +346,15 @@ document.addEventListener("mouseup", () => {
     // ハイライト操作を再び有効化
     setHighlightSelectable(false);
 
-    if (range) {
-      flashLinkedText(range);
-    }
+    // flashLinkedRange(range);
 
     // 選択解除 & 保存
     selection.removeAllRanges();
     saveAllNotes();
+
+    showLinkStatus(`「${selectedText}」をテキストボックスに紐付け`);
   }
 });
-
-function flashLinkedText(range) {
-  const mark = document.createElement("span");
-  mark.style.background = "rgba(120, 217, 255, 0.67)";
-  mark.style.transition = "background 0.6s ease-out";
-  mark.classList.add("temp-linked-flash");
-
-  try {
-    range.surroundContents(mark);
-  } catch (e) {
-    console.warn("Flash failed (range might be split nodes)", e);
-    return;
-  }
-
-  // 徐々に消えて元に戻す
-  setTimeout(() => {
-    mark.style.background = "transparent";
-    setTimeout(() => {
-      const parent = mark.parentNode;
-      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-      parent.removeChild(mark);
-    }, 600);
-  }, 400);
-}
 
 /* ---------- 紐付けモード制御 ---------- */
 export function setHighlightSelectable(selectable) {
@@ -452,14 +424,6 @@ document.getElementById("noteLayer").addEventListener("click", (e) => {
 document.getElementById("findButton").addEventListener("click", () => {
   openSearchPanel();
 });
-
-// document.addEventListener("DOMContentLoaded", () => {
-//     document.querySelectorAll(".note").forEach(note => {
-//         if (note.dataset.linkedText) {
-//             appLinkIcon(note);
-//         }
-//     });
-// });
 
 /* ---------- 起動 ---------- */
 (PDFViewerApplication?.initializedPromise

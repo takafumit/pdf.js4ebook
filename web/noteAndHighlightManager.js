@@ -88,5 +88,5 @@ export function showLinkStatus(text) {
 
   setTimeout(() => {
     label.style.opacity = "0";
-  }, 2500);
+  }, 5000);
 }
