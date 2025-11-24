@@ -1,9 +1,6 @@
 // freehandMode.js
 
 import { state, select, FREEHAND_KEY } from "./noteExtension.js";
-// Undo/Redo のために必要であればコメントアウトを解除してください
-// import { OP, doOp } from "./undoRedoManager.js"; 
-// import { saveFreehandToServer } from './serverStorage.js';
 
 /* ---------- 定義と設定 ---------- */
 const strokes = [];
@@ -36,7 +33,6 @@ export const freehandMode = {
     this.isDrawing = false;
     this.currentStroke = null;
 
-    // モード無効時にパレットを非表示にする
     this.hideColorPalette();
 
     // 無効化されたタイミングで、描いたストロークを矩形グループ化する
@@ -262,7 +258,8 @@ export const freehandMode = {
     innerSvg.setAttribute("height", bbox.height);
     innerSvg.style.display = "block";
     innerSvg.style.pointerEvents = "none";
-    innerSvg.setAttribute("viewBox", `0 0 ${bbox.width} ${bbox.height}`);
+    // innerSvg.setAttribute("viewBox", `0 0 ${bbox.width} ${bbox.height}`);
+    innerSvg.setAttribute("viewBox", `0 0 ${pdfW} ${pdfH}`);
     group.appendChild(innerSvg);
 
     // 各ストローク（パス要素）をグループのSVG内に移動（座標をオフセット）
@@ -273,11 +270,16 @@ export const freehandMode = {
 
         // 1. 座標をグループの左上基準に再計算し、D属性を更新
         const d = s.points.map((p, i) => {
-          const px = p.x - bbox.left;
-          const py = p.y - bbox.top;
-          return `${i === 0 ? "M" : "L"}${px},${py}`;
+          const groupRelativeX = p.x - bbox.left;
+          const groupRelativeY = p.y - bbox.top;
+
+          // 🚨 修正: DOMピクセルを PDFポイント単位に変換
+          const pdfXpt = groupRelativeX / vp.scale;
+          const pdfYpt = groupRelativeY / vp.scale;
+
+          return `${i === 0 ? "M" : "L"}${pdfXpt},${pdfYpt}`;
         }).join(" ");
-        pathEl.setAttribute("d", d);
+        pathEl.setAttribute("d", d); // 👈 これでDOM上のパスもPDF座標単位になる
 
         // 2. パス要素の色を設定（グループの色）
         pathEl.setAttribute("stroke", groupColor);
@@ -319,9 +321,23 @@ export const freehandMode = {
 
     console.log("freehand group created:", group.dataset.id);
     // saveFreehandToServer(group);
-    const pathsData = strokesArray.map(s =>
-      s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
-    );
+
+    const pathsData = strokesArray.map(s => {
+      // s.points は noteLayer 相対DOM座標 (p.x, p.y)
+      // グループ内の ViewBox 座標（PDF座標）にするには
+      // 1. グループ左上基準にする: (p.x - bbox.left, p.y - bbox.top)
+      // 2. スケールで割る: / vp.scale
+      return s.points.map((p, i) => {
+        const groupRelativeX = p.x - bbox.left;
+        const groupRelativeY = p.y - bbox.top;
+
+        // PDF座標（ViewBox座標）に変換
+        const pdfXpt = groupRelativeX / vp.scale;
+        const pdfYpt = groupRelativeY / vp.scale;
+
+        return `${i === 0 ? "M" : "L"}${pdfXpt},${pdfYpt}`;
+      }).join(" ");
+    });
 
     const singleGroupData = {
       id: group.dataset.id,
@@ -404,6 +420,20 @@ export const freehandMode = {
       group.dataset.x = pdfX;
       group.dataset.y = pdfY;
 
+      // 🚀 修正追加: 位置変更をローカルストレージに保存
+      const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+      const groupData = {
+        id: group.dataset.id,
+        page: parseInt(group.dataset.page),
+        x: pdfX, // 更新後の X
+        y: pdfY, // 更新後の Y
+        w: parseFloat(group.dataset.w),
+        h: parseFloat(group.dataset.h),
+        color: group.dataset.color,
+        paths: savedPaths
+      };
+      saveGroupLocally(groupData); // saveGroupLocally は更新・追加を担う
+
       // TODO: Undo/Redo (OP.move) と保存のロジックをここに追加
     }
 
@@ -463,9 +493,52 @@ export const freehandMode = {
       const currentWidth = parseFloat(group.style.width);
       const currentHeight = parseFloat(group.style.height);
 
+      const scaleX = currentWidth / startWidth;
+      const scaleY = currentHeight / startHeight;
+
+      const pdfW = parseFloat(group.dataset.w) * scaleX;
+      const pdfH = parseFloat(group.dataset.h) * scaleY;
+
+      // const pdfW = currentWidth / vp.scale;
+      // const pdfH = currentHeight / vp.scale;
+
       // PDF座標に変換してデータセット更新
       group.dataset.w = currentWidth / vp.scale;
       group.dataset.h = currentHeight / vp.scale;
+
+      // 🚀 修正追加: viewBox を更新
+      const innerSvg = group.querySelector('svg');
+      if (innerSvg) {
+        // viewBoxを更新後のPDFサイズ (pdfW, pdfH) に設定する
+        innerSvg.setAttribute("viewBox", `0 0 ${pdfW} ${pdfH}`);
+      }
+
+      // 線の太さを再計算（スケールは変わっていないが、リサイズにより線が相対的に太く/細くなった可能性があるため）
+      group.querySelectorAll('path').forEach(path => {
+        const d = path.getAttribute('d');
+        const newD = d.replace(/([ML])([\d.]+),([\d.]+)/g, (match, cmd, x, y) => {
+          const newX = parseFloat(x) * scaleX;
+          const newY = parseFloat(y) * scaleY;
+          return `${cmd}${newX},${newY}`;
+        });
+        path.setAttribute('d', newD);
+      });
+
+      const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+      const groupData = {
+        id: group.dataset.id,
+        page: parseInt(group.dataset.page),
+        x: parseFloat(group.dataset.x),
+        y: parseFloat(group.dataset.y),
+        w: pdfW, // 更新後の W
+        h: pdfH, // 更新後の H
+        color: group.dataset.color,
+        paths: savedPaths
+      };
+      saveGroupLocally(groupData); // saveGroupLocally を呼び出して保存
+
+      console.log(group.dataset.w, group.dataset.h);
+      group.querySelectorAll('path').forEach(p => console.log(p.getAttribute('d')));
 
       // TODO: Undo/Redo (OP.resize) と保存のロジックをここに追加
     }
@@ -566,6 +639,19 @@ export const freehandMode = {
           group.dataset.color = key;
           this._applySelectedStyle(group);
 
+          const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+          const groupData = {
+            id: group.dataset.id,
+            page: parseInt(group.dataset.page),
+            x: parseFloat(group.dataset.x),
+            y: parseFloat(group.dataset.y),
+            w: parseFloat(group.dataset.w),
+            h: parseFloat(group.dataset.h),
+            color: key,
+            paths: savedPaths
+          };
+          saveGroupLocally(groupData);
+
           document.dispatchEvent(
             new CustomEvent("freehand:colorChanged", { detail: { group, color: key } })
           );
@@ -634,6 +720,10 @@ export const freehandMode = {
         innerSvg.setAttribute('width', domW);
         innerSvg.setAttribute('height', domH);
       }
+
+      group.querySelectorAll('path').forEach(path => {
+        path.setAttribute("stroke-width", 2 / vp.scale);
+      });
 
       // 選択中の場合は枠線を更新
       if (state.selected === group) {
@@ -779,50 +869,23 @@ export function restoreFreehands() {
 
     const path = document.createElementNS(svgNS, "path");
 
-    // group.style.left/top から、グループの左上隅のDOM絶対座標（px）を取得
-    const groupLeft = parseFloat(group.style.left);
-    const groupTop = parseFloat(group.style.top);
-
     // 🚨 修正: データ構造を統一し、パスが存在しない場合のフォールバックを強化 🚨
     // fh.paths (新しい配列) があればそれを使う。なければ fh.pathData (古い単一パス) を配列にする。
-    const pathsToRestore = fh.paths || (fh.pathData ? [fh.pathData] : []);
+    const pathsToRestore = Array.isArray(fh.paths) ? fh.paths : [];
+    if (pathsToRestore.length === 0) {
+      console.warn(`グループ ${fh.id} の paths データがありません。`);
+      return; // データがない場合は処理を中断
+    }
 
     pathsToRestore.forEach(pathDataString => {
-      // ⚠️ 強化されたチェック ⚠️: null, undefined, 空文字列、数値などの無効な値をスキップ
-      if (typeof pathDataString !== 'string' || pathDataString.length === 0) {
-        return;
-      }
+      if (typeof pathDataString !== 'string' || pathDataString.length < 5) return; // 適切なチェック
 
-      // パスデータ（noteLayer絶対座標）をグループのviewBox座標系（PDF相対座標）に変換
-      const relativePathData = pathDataString.split(' ').map(segment => {
-        const command = segment.charAt(0);
-        if (segment.length < 2) return segment; // 短すぎるセグメントはそのまま返す
-        const coords = segment.slice(1);
-
-        if (command === 'M' || command === 'L') {
-          // x, y は保存された絶対 DOM 座標
-          let [x, y] = coords.split(',').map(parseFloat);
-
-          // 1. DOM座標の差分を計算: (保存された絶対座標 - グループの絶対位置)
-          const domRelativeX = x - groupLeft;
-          const domRelativeY = y - groupTop;
-
-          // 2. DOM座標の差分をスケールで割って、viewBoxの単位（PDF座標）にする 👈 ここが重要
-          const pdfRelativeX = domRelativeX / vp.scale;
-          const pdfRelativeY = domRelativeY / vp.scale;
-
-          return `${command}${pdfRelativeX},${pdfRelativeY}`;
-        }
-        return segment;
-      }).join(' ');
-
-      // パス要素を作成し、SVGに追加
       const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", relativePathData);
+      path.setAttribute("d", pathDataString);
       path.setAttribute("stroke", freehandColors[fh.color] || freehandColors.red);
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke-width", 2);
-
+      path.setAttribute("stroke-width", 2 / vp.scale);
+      path.style.pointerEvents = "none";
       innerSvg.appendChild(path);
     });
 
@@ -835,20 +898,18 @@ export function restoreFreehands() {
     });
 
     noteLayer.appendChild(group);
-    // ★★★ 確認用ログを追加 ★★★
     const isChildOfNoteLayer = noteLayer.contains(group);
-    console.log(`✅ Group作成とDOM追加確認 (ページ ${fh.page}):`,
-      `noteLayerの子要素か？ -> ${isChildOfNoteLayer ? 'YES' : 'NO'}`,
-      '追加されたグループ要素:', group);
-    // ★★★ ログ追加ここまで ★★★
+    // console.log(`✅ Group作成とDOM追加確認 (ページ ${fh.page}):`,
+    //   `noteLayerの子要素か？ -> ${isChildOfNoteLayer ? 'YES' : 'NO'}`,
+    //   '追加されたグループ要素:', group);
 
-    console.log(group.style.left, group.style.top, group.style.width, group.style.height);
-    console.log(innerSvg.getAttribute("viewBox"));
-    console.log(path.getAttribute("d"));
-    console.log(group, group.offsetWidth, group.offsetHeight);
-    console.log(innerSvg, innerSvg.getBoundingClientRect());
+    // console.log(group.style.left, group.style.top, group.style.width, group.style.height);
+    // console.log(innerSvg.getAttribute("viewBox"));
+    // console.log(path.getAttribute("d"));
+    // console.log(group, group.offsetWidth, group.offsetHeight);
+    // console.log(innerSvg, innerSvg.getBoundingClientRect());
 
-    // freehandMode.makeGroupDraggableAndResizable(group, pageView);
+    freehandMode.makeGroupDraggableAndResizable(group, pageView);
   });
 
   console.log("🖋 復元したフリーハンド:", freehands.length, "件");
