@@ -13,12 +13,11 @@ const freehandColors = {
 };
 const defaultColorKey = "red";
 
-const currentColor = defaultColorKey;
-
 export const freehandMode = {
   isDrawing: false,
   currentStroke: null,
   selectedPath: null,
+  currentColor: defaultColorKey, // 現在の描画色を保持
 
   /* ---------- モード制御 ---------- */
   enable() {
@@ -26,6 +25,9 @@ export const freehandMode = {
     const vc = document.getElementById("viewerContainer");
     if (vc) vc.style.cursor = "crosshair";
     console.log("freehand enabled");
+
+    // モード有効時に色選択パレットを表示
+    this.showPreDrawColorPalette();
   },
 
   disable() {
@@ -65,7 +67,6 @@ export const freehandMode = {
     document.addEventListener("click", e => this._handleOutsideClick(e));
 
     // 画面の拡大縮小、リサイズに対応するために redrawAll をフック
-    // PDFViewerApplication は外部ライブラリ (pdf.js) のグローバルオブジェクトを想定
     if (typeof PDFViewerApplication !== 'undefined' && PDFViewerApplication.eventBus) {
       PDFViewerApplication.eventBus.on("scalechanging", () => this.redrawAll());
       PDFViewerApplication.eventBus.on("scalechanged", () => this.redrawAll());
@@ -78,11 +79,14 @@ export const freehandMode = {
 
   /* ---------- 描画処理 ---------- */
   _down(e) {
+    // パレットまたは既存の要素をクリックした場合は描画を開始しない
     if (!state.freehandMode || e.button !== 0 || e.target.closest(".note, .highlight, .freehand-group, #freehandColorPalette")) return;
+
+    // 🚨 修正ポイント: 描画開始でパレットを非表示にする
+    this.hideColorPalette();
 
     // PDFビューアのページ要素を取得
     const pageDiv = e.target.closest(".page");
-    // PDFViewerApplication の存在チェック
     const pageNum = pageDiv ? parseInt(pageDiv.dataset.pageNumber) : (typeof PDFViewerApplication !== 'undefined' ? PDFViewerApplication.pdfViewer.currentPageNumber : 1);
 
     e.preventDefault();
@@ -98,11 +102,11 @@ export const freehandMode = {
 
     this.isDrawing = true;
     // ページ番号と一時パスをストロークに保持
-    this.currentStroke = { points: [{ x, y }], page: pageNum, colorKey: currentColor };
+    this.currentStroke = { points: [{ x, y }], page: pageNum, colorKey: this.currentColor };
 
     this.ensureSvgLayer();
-    // 描画開始時にパス要素を作成し、currentStrokeに保持
-    this.currentStroke.pathEl = this.createSvgPath(this.currentStroke.points, freehandColors[currentColor]);
+    // 描画開始時にパス要素を作成
+    this.currentStroke.pathEl = this.createSvgPath(this.currentStroke.points, freehandColors[this.currentColor]);
   },
 
   _move(e) {
@@ -138,9 +142,11 @@ export const freehandMode = {
 
     this.isDrawing = false;
     this.currentStroke = null;
+
+    // 🚨 修正ポイント: 描画モードが有効な場合でも、描画終了後にパレットを再表示しない
   },
 
-  /* ---------- SVGレイヤー管理 ---------- */
+  /* ---------- SVGレイヤー管理 (変更なし) ---------- */
   ensureSvgLayer() {
     const noteLayer = document.getElementById("noteLayer");
     if (!noteLayer) return;
@@ -190,7 +196,7 @@ export const freehandMode = {
     path.setAttribute("d", d);
   },
 
-  /* ---------- グループ化処理 ---------- */
+  /* ---------- グループ化処理 (変更なし) ---------- */
   createGroupFromStrokes(strokesArray) {
     if (!strokesArray || strokesArray.length === 0) return;
 
@@ -258,7 +264,6 @@ export const freehandMode = {
     innerSvg.setAttribute("height", bbox.height);
     innerSvg.style.display = "block";
     innerSvg.style.pointerEvents = "none";
-    // innerSvg.setAttribute("viewBox", `0 0 ${bbox.width} ${bbox.height}`);
     innerSvg.setAttribute("viewBox", `0 0 ${pdfW} ${pdfH}`);
     group.appendChild(innerSvg);
 
@@ -273,13 +278,13 @@ export const freehandMode = {
           const groupRelativeX = p.x - bbox.left;
           const groupRelativeY = p.y - bbox.top;
 
-          // 🚨 修正: DOMピクセルを PDFポイント単位に変換
+          // DOMピクセルを PDFポイント単位に変換
           const pdfXpt = groupRelativeX / vp.scale;
           const pdfYpt = groupRelativeY / vp.scale;
 
           return `${i === 0 ? "M" : "L"}${pdfXpt},${pdfYpt}`;
         }).join(" ");
-        pathEl.setAttribute("d", d); // 👈 これでDOM上のパスもPDF座標単位になる
+        pathEl.setAttribute("d", d);
 
         // 2. パス要素の色を設定（グループの色）
         pathEl.setAttribute("stroke", groupColor);
@@ -301,7 +306,7 @@ export const freehandMode = {
       } else {
         select(group);
         this._applySelectedStyle(group);
-        this.showColorPalette(group);
+        this.showColorPalette(group); // グループ選択時のパレット表示
       }
     });
 
@@ -319,14 +324,7 @@ export const freehandMode = {
       while (freeSvg.firstChild) freeSvg.removeChild(freeSvg.firstChild);
     }
 
-    console.log("freehand group created:", group.dataset.id);
-    // saveFreehandToServer(group);
-
     const pathsData = strokesArray.map(s => {
-      // s.points は noteLayer 相対DOM座標 (p.x, p.y)
-      // グループ内の ViewBox 座標（PDF座標）にするには
-      // 1. グループ左上基準にする: (p.x - bbox.left, p.y - bbox.top)
-      // 2. スケールで割る: / vp.scale
       return s.points.map((p, i) => {
         const groupRelativeX = p.x - bbox.left;
         const groupRelativeY = p.y - bbox.top;
@@ -347,8 +345,7 @@ export const freehandMode = {
       w: pdfW,
       h: pdfH,
       color: groupColorKey,
-      // 複数のパスデータを配列として保存する
-      paths: pathsData // ⬅️ ここを配列にする
+      paths: pathsData
     };
 
     // 既存のフリーハンドデータを取得し、新しいグループデータを追加して保存し直す
@@ -373,7 +370,7 @@ export const freehandMode = {
     return { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
   },
 
-  /* ---------- ドラッグ・リサイズ処理 ---------- */
+  /* ---------- ドラッグ・リサイズ処理 (変更なし) ---------- */
   makeGroupDraggableAndResizable(group, pageView) {
     let startX, startY, startLeft, startTop, startWidth, startHeight;
     const vp = pageView.viewport;
@@ -389,13 +386,13 @@ export const freehandMode = {
       // 選択されたグループのスタイルを適用
       select(group);
       this._applySelectedStyle(group);
+      this.hideColorPalette(); // ドラッグ開始でパレットを閉じる
 
       startX = e.clientX;
       startY = e.clientY;
       startLeft = parseFloat(getComputedStyle(group).left);
       startTop = parseFloat(getComputedStyle(group).top);
 
-      // TODO: Undo/Redo のための移動前位置を保存
       document.onmousemove = onMove;
       document.onmouseup = onUp;
     };
@@ -407,7 +404,7 @@ export const freehandMode = {
       group.style.top = `${startTop + dy}px`;
     }
 
-    const self = this; // onUp/onMove 内で freehandMode のメソッドを呼ぶために必要
+    const self = this;
     function onUp(e) {
       document.onmousemove = document.onmouseup = null;
 
@@ -420,21 +417,19 @@ export const freehandMode = {
       group.dataset.x = pdfX;
       group.dataset.y = pdfY;
 
-      // 🚀 修正追加: 位置変更をローカルストレージに保存
+      // 位置変更をローカルストレージに保存
       const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
       const groupData = {
         id: group.dataset.id,
         page: parseInt(group.dataset.page),
-        x: pdfX, // 更新後の X
-        y: pdfY, // 更新後の Y
+        x: pdfX,
+        y: pdfY,
         w: parseFloat(group.dataset.w),
         h: parseFloat(group.dataset.h),
         color: group.dataset.color,
         paths: savedPaths
       };
-      saveGroupLocally(groupData); // saveGroupLocally は更新・追加を担う
-
-      // TODO: Undo/Redo (OP.move) と保存のロジックをここに追加
+      saveGroupLocally(groupData);
     }
 
     group.addEventListener("mousedown", onMouseDown);
@@ -456,15 +451,14 @@ export const freehandMode = {
 
     handle.onmousedown = (e) => {
       e.stopPropagation();
-      select(group); // リサイズ時も選択状態にする
+      select(group);
       self._applySelectedStyle(group);
+      self.hideColorPalette(); // リサイズ開始でパレットを閉じる
 
       startX = e.clientX;
       startY = e.clientY;
       startWidth = parseFloat(getComputedStyle(group).width);
       startHeight = parseFloat(getComputedStyle(group).height);
-
-      // TODO: Undo/Redo のためのリサイズ前サイズを保存
 
       document.onmousemove = doResize;
       document.onmouseup = endResize;
@@ -479,7 +473,7 @@ export const freehandMode = {
       group.style.width = `${newW}px`;
       group.style.height = `${newH}px`;
 
-      // SVG のサイズを連動させる（viewBoxが設定されているため、内部のパスが自動で拡大縮小する）
+      // SVG のサイズを連動させる
       const innerSvg = group.querySelector('svg');
       if (innerSvg) {
         innerSvg.setAttribute('width', newW);
@@ -499,21 +493,17 @@ export const freehandMode = {
       const pdfW = parseFloat(group.dataset.w) * scaleX;
       const pdfH = parseFloat(group.dataset.h) * scaleY;
 
-      // const pdfW = currentWidth / vp.scale;
-      // const pdfH = currentHeight / vp.scale;
-
       // PDF座標に変換してデータセット更新
-      group.dataset.w = currentWidth / vp.scale;
-      group.dataset.h = currentHeight / vp.scale;
+      group.dataset.w = pdfW;
+      group.dataset.h = pdfH;
 
-      // 🚀 修正追加: viewBox を更新
+      // viewBox を更新
       const innerSvg = group.querySelector('svg');
       if (innerSvg) {
-        // viewBoxを更新後のPDFサイズ (pdfW, pdfH) に設定する
         innerSvg.setAttribute("viewBox", `0 0 ${pdfW} ${pdfH}`);
       }
 
-      // 線の太さを再計算（スケールは変わっていないが、リサイズにより線が相対的に太く/細くなった可能性があるため）
+      // パスのD属性をスケールに応じて更新
       group.querySelectorAll('path').forEach(path => {
         const d = path.getAttribute('d');
         const newD = d.replace(/([ML])([\d.]+),([\d.]+)/g, (match, cmd, x, y) => {
@@ -524,53 +514,109 @@ export const freehandMode = {
         path.setAttribute('d', newD);
       });
 
+
       const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
       const groupData = {
         id: group.dataset.id,
         page: parseInt(group.dataset.page),
         x: parseFloat(group.dataset.x),
         y: parseFloat(group.dataset.y),
-        w: pdfW, // 更新後の W
-        h: pdfH, // 更新後の H
+        w: pdfW,
+        h: pdfH,
         color: group.dataset.color,
         paths: savedPaths
       };
-      saveGroupLocally(groupData); // saveGroupLocally を呼び出して保存
-
-      console.log(group.dataset.w, group.dataset.h);
-      group.querySelectorAll('path').forEach(p => console.log(p.getAttribute('d')));
-
-      // TODO: Undo/Redo (OP.resize) と保存のロジックをここに追加
+      saveGroupLocally(groupData);
     }
   },
 
   /* ---------- 選択・パレット処理 ---------- */
   _handleOutsideClick(e) {
-    // 現在選択されているグループがない場合は何もしない
+    // 🚨 修正ポイント: freehandModeが有効な場合は、パレット外をクリックしてもパレットを閉じず、描画可能状態を維持する
+    if (state.freehandMode) {
+      const isPalette = e.target.closest("#freehandColorPalette");
+      // パレット内でクリックされた場合は伝播を止めるだけで、描画を妨げない
+      if (isPalette) {
+        e.stopPropagation();
+      }
+      return;
+    }
+
+    // freehandModeが無効（通常モード）の場合:
     if (!state.selected) return;
 
-    // 1. クリックされた要素が、以下のいずれかに該当するかチェックする:
-    //    a) 選択されているフリーハンドグループ (.freehand-group)
-    //    b) カラーパレット (#freehandColorPalette)
-    //    c) 描画を許可する要素（.pageなど）
-
+    // グループまたはパレット内をクリックした場合は、選択解除しない
     const isGroup = e.target.closest(".freehand-group");
     const isPalette = e.target.closest("#freehandColorPalette");
 
     if (isGroup || isPalette) {
-      // グループまたはパレット内をクリックした場合は、選択解除しない
       return;
     }
 
-    select(null); // 選択状態を解除 (state.selected を null にする関数を想定)
+    select(null); // 選択状態を解除
     this.hideColorPalette(); // パレットを非表示にする
   },
 
   _applySelectedStyle(group) {
-    // リサイズハンドルも表示するために、選択状態を示すクラスを追加
     group.classList.add("selected-freehand-group");
   },
 
+  // 描画モード有効時に表示する色選択パレット
+  showPreDrawColorPalette() {
+    this.hideColorPalette();
+    const palette = document.createElement("div");
+    palette.id = "freehandColorPalette";
+    Object.assign(palette.style, {
+      position: "absolute",
+      display: "flex",
+      gap: "6px",
+      padding: "6px",
+      border: "1px solid #bbb",
+      background: "#fff",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+      zIndex: 100000,
+      cursor: "default"
+    });
+
+    // 画面中央上部付近に表示
+    const top = 50;
+    palette.style.top = `${top}px`;
+    palette.style.left = `50%`;
+    palette.style.transform = `translateX(-50%)`;
+
+    // カラーボタン
+    Object.entries(freehandColors).forEach(([key, color]) => {
+      const btn = document.createElement("button");
+      Object.assign(btn.style, {
+        background: color,
+        // 描画色によって枠線を変更
+        border: this.currentColor === key ? "3px solid black" : "2px solid #333",
+        width: "24px",
+        height: "24px",
+        borderRadius: "4px",
+        cursor: "pointer",
+        transition: "border 0.1s"
+      });
+      btn.onclick = ev => {
+        ev.stopPropagation();
+        // 選択された色に this.currentColor を更新
+        this.currentColor = key;
+
+        // 選択状態を視覚的にフィードバックするためにパレットを再描画
+        this.showPreDrawColorPalette();
+
+        // カーソルを crosshair に戻す
+        const vc = document.getElementById("viewerContainer");
+        if (vc) vc.style.cursor = "crosshair";
+      };
+      btn.dataset.colorKey = key;
+      palette.appendChild(btn);
+    });
+
+    document.body.appendChild(palette);
+  },
+
+  // 既存の showColorPalette (グループ選択後)
   showColorPalette(baseEl) {
     this.hideColorPalette();
     const palette = document.createElement("div");
@@ -637,6 +683,10 @@ export const freehandMode = {
 
           // 選択スタイルとデータセットを更新
           group.dataset.color = key;
+
+          // グループの色が変更されたら、次に描画する色も更新しておく
+          this.currentColor = key;
+
           this._applySelectedStyle(group);
 
           const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
@@ -655,8 +705,6 @@ export const freehandMode = {
           document.dispatchEvent(
             new CustomEvent("freehand:colorChanged", { detail: { group, color: key } })
           );
-
-          // TODO: doOp(OP.updateColor(group, prevColor, key));
         }
         this.hideColorPalette();
       };
@@ -684,9 +732,8 @@ export const freehandMode = {
     if (p) p.remove();
   },
 
-  /* ---------- 再描画処理 ---------- */
+  /* ---------- 再描画処理 (変更なし) ---------- */
   redrawAll() {
-    console.log("🔥 redrawAll が実行されました！");
     if (typeof PDFViewerApplication === 'undefined' || !PDFViewerApplication.pdfViewer) return;
 
     document.querySelectorAll(".freehand-group").forEach(group => {
@@ -741,16 +788,12 @@ export const freehandMode = {
       // makeGroupDraggableAndResizable が呼ばれていない場合、ここで初期化
       if (!group.querySelector(".freehand-resize-handle")) {
         this.makeGroupDraggableAndResizable(group, pageView);
-        console.log(`🔨 ページ ${pageNum} のグループにドラッグ機能を初期化しました。`);
       }
 
-      // **最も重要なチェック:**
-      // noteLayer の子要素になっていない場合、PDFビューアがDOMをクリアした可能性があるため再挿入
-      // ページの noteLayer を取得し直す
+      // noteLayer の子要素になっていない場合、再挿入
       const noteLayer = pageView.div.querySelector('.annotationLayer #noteLayer');
       if (noteLayer && !noteLayer.contains(group)) {
         noteLayer.appendChild(group);
-        console.log(`✅ ページ ${pageNum} のグループを noteLayer に再挿入しました！`);
       }
     });
   }
@@ -764,14 +807,12 @@ export function deleteGroupLocally(groupId) {
   currentData.freehands = currentData.freehands.filter(g => g.id !== groupId);
 
   localStorage.setItem(FREEHAND_KEY, JSON.stringify(currentData));
-  console.log("🗑 削除保存完了:", groupId);
 }
 
 export function saveGroupLocally(newGroupData) {
   let currentData = { freehands: [] };
   const raw = localStorage.getItem(FREEHAND_KEY);
 
-  // 既存のデータを取得（ストロークではなくグループの配列を想定）
   if (raw) {
     try {
       currentData = JSON.parse(raw);
@@ -786,7 +827,6 @@ export function saveGroupLocally(newGroupData) {
 
   try {
     localStorage.setItem(FREEHAND_KEY, JSON.stringify(currentData));
-    console.log("📝 グループ保存成功:", currentData.freehands.length, "件のグループ");
   } catch (e) {
     console.error("💾 グループ保存失敗:", e);
   }
@@ -794,41 +834,16 @@ export function saveGroupLocally(newGroupData) {
 
 export function restoreFreehands() {
   const raw = localStorage.getItem(FREEHAND_KEY);
-  console.log(FREEHAND_KEY, raw);
   if (!raw) return;
-
-  // let parsed;
-  // try {
-  //     parsed = JSON.parse(raw);
-  // } catch {
-  //     return;
-  // }
 
   let parsed;
 
   if (raw) {
-    console.log(`✅ ${FREEHAND_KEY} のデータが見つかりました。`);
-    console.log("------------------------------------------");
-
-    // 2. 取得した生データ（文字列）を出力
-    console.log("Raw String Data:", raw);
-
     try {
-      // 3. JSONとしてパース（構造化）を試みる
       parsed = JSON.parse(raw);
-
-      console.log("Parsed JSON Object:", parsed);
-
-      // 4. データの中身（例: freehands配列の長さ）を出力
-      const freehandCount = parsed.freehands ? parsed.freehands.length : 0;
-      console.log("復元されるフリーハンドの数:", freehandCount);
-
     } catch (e) {
-      // 5. JSONパースに失敗した場合のエラーを出力
       console.error("❌ ERROR: JSON形式が不正です。:", e);
     }
-  } else {
-    console.log(`❌ ${FREEHAND_KEY} のデータは localStorage に見つかりませんでした。`);
   }
 
   const freehands = parsed.freehands;
@@ -857,7 +872,7 @@ export function restoreFreehands() {
       cursor: "move",
       pointerEvents: "auto",
       zIndex: 2000,
-      border: "2px solid blue"
+      border: `1px solid rgba(0,0,0,0.2)`
     });
 
     const svgNS = "http://www.w3.org/2000/svg";
@@ -867,18 +882,13 @@ export function restoreFreehands() {
     innerSvg.setAttribute("viewBox", `0 0 ${fh.w} ${fh.h}`);
     innerSvg.style.pointerEvents = "none";
 
-    const path = document.createElementNS(svgNS, "path");
-
-    // 🚨 修正: データ構造を統一し、パスが存在しない場合のフォールバックを強化 🚨
-    // fh.paths (新しい配列) があればそれを使う。なければ fh.pathData (古い単一パス) を配列にする。
     const pathsToRestore = Array.isArray(fh.paths) ? fh.paths : [];
     if (pathsToRestore.length === 0) {
-      console.warn(`グループ ${fh.id} の paths データがありません。`);
-      return; // データがない場合は処理を中断
+      return;
     }
 
     pathsToRestore.forEach(pathDataString => {
-      if (typeof pathDataString !== 'string' || pathDataString.length < 5) return; // 適切なチェック
+      if (typeof pathDataString !== 'string' || pathDataString.length < 5) return;
 
       const path = document.createElementNS(svgNS, "path");
       path.setAttribute("d", pathDataString);
@@ -894,23 +904,16 @@ export function restoreFreehands() {
     group.addEventListener("click", ev => {
       ev.stopPropagation();
       select(group);
-      freehandMode.showColorPalette(group);
+      freehandMode.showColorPalette(group); // グループ選択時のパレット表示
     });
 
     noteLayer.appendChild(group);
-    const isChildOfNoteLayer = noteLayer.contains(group);
-    // console.log(`✅ Group作成とDOM追加確認 (ページ ${fh.page}):`,
-    //   `noteLayerの子要素か？ -> ${isChildOfNoteLayer ? 'YES' : 'NO'}`,
-    //   '追加されたグループ要素:', group);
-
-    // console.log(group.style.left, group.style.top, group.style.width, group.style.height);
-    // console.log(innerSvg.getAttribute("viewBox"));
-    // console.log(path.getAttribute("d"));
-    // console.log(group, group.offsetWidth, group.offsetHeight);
-    // console.log(innerSvg, innerSvg.getBoundingClientRect());
-
     freehandMode.makeGroupDraggableAndResizable(group, pageView);
   });
 
-  console.log("🖋 復元したフリーハンド:", freehands.length, "件");
+  // 復元された中で最後に処理されたグループの色を、次の描画色として設定
+  if (freehands.length > 0) {
+    const lastGroup = freehands[freehands.length - 1];
+    freehandMode.currentColor = lastGroup.color || defaultColorKey;
+  }
 }

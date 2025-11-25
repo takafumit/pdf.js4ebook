@@ -109,6 +109,12 @@ function initFull() {
       state.freeHighlightMode = false;
       freeHighlightBtn.classList.remove("toggled");
     }
+    if (except !== "freehand") {
+      state.freehandMode = false;
+      freehandBtn.classList.remove("toggled");
+      // freehandModeが有効であれば無効化する
+      freehandMode.disable(); 
+    }
   }
 
   // --- ノートボタン ---
