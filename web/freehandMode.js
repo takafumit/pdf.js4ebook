@@ -1,6 +1,6 @@
 // freehandMode.js
 
-import { state, select, FREEHAND_KEY } from "./noteExtension.js";
+import { state, select, FREEHAND_KEY, domToPdf } from "./noteExtension.js";
 import { doOp, OP } from './undoRedoManager.js';
 
 /* ---------- 定義と設定 ---------- */
@@ -416,31 +416,36 @@ export const freehandMode = {
     function onUp(e) {
       document.onmousemove = document.onmouseup = null;
 
-      // 【✅ 追記】移動前のデータを取得
-      const prevLeft = parseFloat(group.dataset.startLeft);
-      const prevTop = parseFloat(group.dataset.startTop);
       const prevPdfX = parseFloat(group.dataset.startPdfX);
       const prevPdfY = parseFloat(group.dataset.startPdfY);
 
-      // 変更後のDOM座標とPDF座標を計算
-      const newLeft = parseFloat(group.style.left);
-      const newTop = parseFloat(group.style.top);
+      // ページ番号を取得
+      const pageNum = parseInt(group.dataset.page);
 
-      // PDF座標に変換してデータセット更新
-      const domX = newLeft - pageOffsetLeft; // newLeftを使用
-      const domY = newTop - pageOffsetTop;   // newTopを使用
-      const [pdfX, pdfY] = vp.convertToPdfPoint(domX, domY);
+      // 【🔥🔥🔥 修正点 🔥🔥🔥】domToPdf を使って正確な PDF 座標を取得する
+      const { x: pdfX, y: pdfY } = domToPdf(group, pageNum);
+
+      // 既存のDOM座標を取得 (Undo/Redo用)
+      const toLeft = parseFloat(group.style.left);
+      const toTop = parseFloat(group.style.top);
+      const fromLeft = parseFloat(group.dataset.startLeft);
+      const fromTop = parseFloat(group.dataset.startTop);
 
       // PDF座標更新
       group.dataset.x = pdfX;
       group.dataset.y = pdfY;
 
-      // 【✅ 追記】doOp を呼び出す
-      if (prevLeft !== newLeft || prevTop !== newTop) {
+      // 🚨 注意: domToPdfはw, hも返しますが、移動時はサイズは変わらないので、
+      // w, hのdataset更新は不要か、または group.dataset.w/h を使うべきです。
+      // サイズも再計算する場合は { x: pdfX, y: pdfY, w: pdfW, h: pdfH } のように受け取ります。
+
+      // ... (続く doOp と saveGroupLocally のロジック) ...
+
+      if (prevPdfX !== pdfX || prevPdfY !== pdfY) {
         doOp(OP.moveFreehand(
           group,
-          prevLeft, prevTop, newLeft, newTop,
-          prevPdfX, prevPdfY, pdfX, pdfY
+          fromLeft, fromTop, toLeft, toTop, // DOM座標はUndo用
+          prevPdfX, prevPdfY, pdfX, pdfY    // PDF座標はデータ保存用
         ));
       }
 
@@ -448,9 +453,9 @@ export const freehandMode = {
       const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
       const groupData = {
         id: group.dataset.id,
-        page: parseInt(group.dataset.page),
-        x: pdfX,
-        y: pdfY,
+        page: pageNum,
+        x: pdfX, // ✅ 更新されたPDF座標
+        y: pdfY, // ✅ 更新されたPDF座標
         w: parseFloat(group.dataset.w),
         h: parseFloat(group.dataset.h),
         color: group.dataset.color,
@@ -1022,41 +1027,41 @@ export function restoreFreehands() {
 }
 
 export function saveAllFreehands() {
-    const freehandsData = [];
-    const noteLayer = document.getElementById("noteLayer");
-    
-    // noteLayer が存在しない、またはDOMがまだ準備されていない場合は処理をスキップ
-    if (!noteLayer) {
-        console.warn("⚠️ Cannot save all freehands: #noteLayer not found.");
-        return;
-    }
+  const freehandsData = [];
+  const noteLayer = document.getElementById("noteLayer");
 
-    // DOM上の全てのフリーハンドグループを取得
-    const allGroups = noteLayer.querySelectorAll('.freehand-group');
+  // noteLayer が存在しない、またはDOMがまだ準備されていない場合は処理をスキップ
+  if (!noteLayer) {
+    console.warn("⚠️ Cannot save all freehands: #noteLayer not found.");
+    return;
+  }
 
-    allGroups.forEach(group => {
-        // saveGroupLocally と同様に、DOM要素の dataset と path の 'd' 属性からデータを抽出
-        const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
-        
-        freehandsData.push({
-            id: group.dataset.id,
-            page: parseInt(group.dataset.page),
-            x: parseFloat(group.dataset.x),
-            y: parseFloat(group.dataset.y),
-            w: parseFloat(group.dataset.w),
-            h: parseFloat(group.dataset.h),
-            color: group.dataset.color,
-            paths: savedPaths
-        });
+  // DOM上の全てのフリーハンドグループを取得
+  const allGroups = noteLayer.querySelectorAll('.freehand-group');
+
+  allGroups.forEach(group => {
+    // saveGroupLocally と同様に、DOM要素の dataset と path の 'd' 属性からデータを抽出
+    const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+
+    freehandsData.push({
+      id: group.dataset.id,
+      page: parseInt(group.dataset.page),
+      x: parseFloat(group.dataset.x),
+      y: parseFloat(group.dataset.y),
+      w: parseFloat(group.dataset.w),
+      h: parseFloat(group.dataset.h),
+      color: group.dataset.color,
+      paths: savedPaths
     });
+  });
 
-    // 最終的に localStorage に保存するデータ構造を作成
-    const finalData = { freehands: freehandsData };
+  // 最終的に localStorage に保存するデータ構造を作成
+  const finalData = { freehands: freehandsData };
 
-    try {
-        localStorage.setItem(FREEHAND_KEY, JSON.stringify(finalData));
-        console.log(`✅ Saved ${freehandsData.length} freehand groups to localStorage (FREEHAND_KEY).`);
-    } catch (e) {
-        console.error("💾 全グループのローカル保存失敗:", e);
-    }
+  try {
+    localStorage.setItem(FREEHAND_KEY, JSON.stringify(finalData));
+    console.log(`✅ Saved ${freehandsData.length} freehand groups to localStorage (FREEHAND_KEY).`);
+  } catch (e) {
+    console.error("💾 全グループのローカル保存失敗:", e);
+  }
 }
