@@ -1,8 +1,9 @@
-import { select, $ } from './noteExtension.js';
+import { select, $, } from './noteExtension.js';
 import { saveAllNotes } from './noteMode.js';
 import { makeHighlightDraggableAndResizable, saveAllHighlights } from './highlightMode.js';
 import { saveAllToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
+import { saveAllFreehands } from './freehandMode.js';
 
 /* ---------- 保存処理 ---------- */
 export function scheduleSave() {
@@ -11,55 +12,56 @@ export function scheduleSave() {
     saveAllNotes();
     saveAllHighlights();
     saveAllToServer();
+    saveAllFreehands();
   }, 300);
 }
 
 /* ---------- 共通復元，再配置 ---------- */
 // updateNotePositions()
 export function updateNotePositions() {
-    document.querySelectorAll(".note, .highlight").forEach(el => {
-        const page = parseInt(el.dataset.page);
-        const pdfX = parseFloat(el.dataset.x);
-        const pdfY = parseFloat(el.dataset.y);
-        const pdfW = parseFloat(el.dataset.w);
-        const pdfH = parseFloat(el.dataset.h);
-        const pageView = PDFViewerApplication.pdfViewer.getPageView(page - 1);
-        if (!pageView) return;
-        const vp = pageView.viewport;
-        const [viewX, viewY] = vp.convertToViewportPoint(pdfX, pdfY);
+  document.querySelectorAll(".note, .highlight").forEach(el => {
+    const page = parseInt(el.dataset.page);
+    const pdfX = parseFloat(el.dataset.x);
+    const pdfY = parseFloat(el.dataset.y);
+    const pdfW = parseFloat(el.dataset.w);
+    const pdfH = parseFloat(el.dataset.h);
+    const pageView = PDFViewerApplication.pdfViewer.getPageView(page - 1);
+    if (!pageView) return;
+    const vp = pageView.viewport;
+    const [viewX, viewY] = vp.convertToViewportPoint(pdfX, pdfY);
 
-        el.style.left = `${viewX + pageView.div.offsetLeft}px`;
-        el.style.top = `${viewY + pageView.div.offsetTop}px`;
-        el.style.width = `${pdfW * vp.scale}px`;
-        el.style.height = `${pdfH * vp.scale}px`;
+    el.style.left = `${viewX + pageView.div.offsetLeft}px`;
+    el.style.top = `${viewY + pageView.div.offsetTop}px`;
+    el.style.width = `${pdfW * vp.scale}px`;
+    el.style.height = `${pdfH * vp.scale}px`;
 
-        if (el.classList.contains("highlight") && el.dataset.text === "" && !el.dataset.draggable) {
-            makeHighlightDraggableAndResizable(el, pageView);
-            el.dataset.draggable = "true";
-        }
-    });
+    if (el.classList.contains("highlight") && el.dataset.text === "" && !el.dataset.draggable) {
+      makeHighlightDraggableAndResizable(el, pageView);
+      el.dataset.draggable = "true";
+    }
+  });
 }
 
 /* ---------- 一括削除ボタン ---------- */
 export function createDeleteButton() {
-    const btn = document.getElementById("deleteButton");
-    if (!btn) return;
+  const btn = document.getElementById("deleteButton");
+  if (!btn) return;
 
-    btn.onclick = () => {
-        if (!confirm("すべてのテキストボックスとハイライトを削除します。\n削除後は元に戻せません。よろしいですか？")) return;
+  btn.onclick = () => {
+    if (!confirm("すべてのテキストボックスとハイライトを削除します。\n削除後は元に戻せません。よろしいですか？")) return;
 
-        const elements = [
-            ...document.querySelectorAll(".note"),
-            ...document.querySelectorAll(".highlight")
-        ];
-        elements.forEach(hl => {
-            doOp(OP.delete(hl, hl.parentElement));
-            hl.remove();
-        });
+    const elements = [
+      ...document.querySelectorAll(".note"),
+      ...document.querySelectorAll(".highlight")
+    ];
+    elements.forEach(hl => {
+      doOp(OP.delete(hl, hl.parentElement));
+      hl.remove();
+    });
 
-        select(null);
-        scheduleSave();
-    };
+    select(null);
+    scheduleSave();
+  };
 }
 
 /* ---------- メッセージ表示するための関数 ---------- */

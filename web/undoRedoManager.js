@@ -1,7 +1,7 @@
 import { state, $, highlightColors } from './noteExtension.js';
 import { saveAllHighlights } from './highlightMode.js';
 import { scheduleSave } from './noteAndHighlightManager.js';
-import { deleteGroupLocally, saveGroupLocally, freehandMode } from './freehandMode.js';
+import { deleteGroupLocally, saveGroupLocally, freehandMode, freehandColors } from './freehandMode.js';
 
 /* ---------- Undo/Redo ---------- */
 export const OP = {
@@ -13,7 +13,15 @@ export const OP = {
   updateColor: (el, prev, next) => ({ action: "updateColor", note: el, prev, next }),
   updateStyle: (el, prev, next) => ({ action: "updateStyle", note: el, prev, next }),
   createFreehand: (el, parent, data) => ({ action: "createFreehand", note: el, parent, data }),
-  deleteFreehand: (el, parent, data) => ({ action: "deleteFreehand", note: el, parent, data })
+  deleteFreehand: (el, parent, data) => ({ action: "deleteFreehand", note: el, parent, data }),
+  updateFreehandColor: (el, prev, next) => ({ action: "updateFreehandColor", note: el, prev, next }),
+  // 【✅ 追加】フリーハンドの移動操作
+  moveFreehand: (el, prevLeft, prevTop, toLeft, toTop, prevPdfX, prevPdfY, toPdfX, toPdfY) =>
+    ({ action: "moveFreehand", note: el, prevLeft, prevTop, toLeft, toTop, prevPdfX, prevPdfY, toPdfX, toPdfY }),
+
+  // 【✅ 追加】フリーハンドのリサイズ操作
+  resizeFreehand: (el, prevW, prevH, toW, toH, prevPdfW, prevPdfH, toPdfW, toPdfH, prevPaths, nextPaths) =>
+    ({ action: "resizeFreehand", note: el, prevW, prevH, toW, toH, prevPdfW, prevPdfH, toPdfW, toPdfH, prevPaths, nextPaths })
 };
 
 // Undo/Redo 対応のノート操作関数
@@ -84,6 +92,69 @@ export function exec(op) {
       deleteGroupLocally(op.note.dataset.id);
       break;
 
+    case "updateFreehandColor":
+      console.log("update freehand color:", op.note);
+      const group = op.note;
+
+      // 1. dataset の更新
+      group.dataset.color = op.next;
+
+      // 2. パス要素の色を更新
+      const newColor = freehandColors[op.next]; // freehandColorsはfreehandModeからインポート
+      group.querySelectorAll('path').forEach(p => {
+        p.setAttribute('stroke', newColor);
+      });
+
+      // 3. パレットの表示を更新（必要な場合）
+      if (state.selected === group) freehandMode.showColorPalette(group);
+      scheduleSave();
+      break;
+
+    // 【✅ 追加】フリーハンドの移動実行ロジック
+    case "moveFreehand":
+      const groupMove = op.note;
+      groupMove.style.left = op.toLeft + "px";
+      groupMove.style.top = op.toTop + "px";
+      groupMove.dataset.x = op.toPdfX;
+      groupMove.dataset.y = op.toPdfY;
+      freehandMode.updateGroupElements(groupMove);
+      scheduleSave();
+      break;
+
+    // 【✅ 追加】フリーハンドのリサイズ実行ロジック
+    case "resizeFreehand":
+      const groupResize = op.note;
+
+      // 1. DOMサイズの更新
+      groupResize.style.width = op.toW + "px";
+      groupResize.style.height = op.toH + "px";
+
+      // 2. データセット (PDF座標) の更新
+      groupResize.dataset.w = op.toPdfW;
+      groupResize.dataset.h = op.toPdfH;
+
+      // 3. SVG要素の更新
+      const innerSvgResize = groupResize.querySelector('svg');
+      if (innerSvgResize) {
+        innerSvgResize.setAttribute('width', op.toW);
+        innerSvgResize.setAttribute('height', op.toH);
+        innerSvgResize.setAttribute("viewBox", `0 0 ${op.toPdfW} ${op.toPdfH}`);
+      }
+
+      // 【✅ 追記】パスのd属性を復元する
+      const paths = groupResize.querySelectorAll('path');
+      const pathData = op.nextPaths; // Undo の場合はリサイズ前のデータがここに来る
+
+      paths.forEach((path, index) => {
+        if (pathData[index]) {
+          path.setAttribute('d', pathData[index]);
+        }
+      });
+
+      freehandMode.updateGroupElements(groupResize);
+      scheduleSave();
+      break;
+
     default:
       console.warn("Unknown op:", op);
   }
@@ -119,6 +190,24 @@ export function invert(op) {
       break;
     case "deleteFreehand":
       inv.action = "createFreehand";
+      break;
+    case "updateFreehandColor":
+      [inv.prev, inv.next] = [op.next, op.prev];
+      break;
+    case "moveFreehand":
+      [inv.prevLeft, inv.toLeft] = [op.toLeft, op.prevLeft];
+      [inv.prevTop, inv.toTop] = [op.toTop, op.prevTop];
+      [inv.prevPdfX, inv.toPdfX] = [op.toPdfX, op.prevPdfX];
+      [inv.prevPdfY, inv.toPdfY] = [op.toPdfY, op.prevPdfY];
+      break;
+    case "resizeFreehand":
+      [inv.prevW, inv.toW] = [op.toW, op.prevW];
+      [inv.prevH, inv.toH] = [op.toH, op.prevH];
+      [inv.prevPdfW, inv.toPdfW] = [op.toPdfW, op.prevPdfW];
+      [inv.prevPdfH, inv.toPdfH] = [op.toPdfH, op.prevPdfH];
+
+      // 【✅ 追記】パスデータを入れ替える
+      [inv.prevPaths, inv.nextPaths] = [op.nextPaths, op.prevPaths];
       break;
   }
   return inv;

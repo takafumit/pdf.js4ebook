@@ -6,7 +6,7 @@ import { doOp, OP } from './undoRedoManager.js';
 /* ---------- 定義と設定 ---------- */
 const strokes = [];
 
-const freehandColors = {
+export const freehandColors = {
   black: "#000000",
   red: "#ff0000",
   blue: "#0000ff",
@@ -396,6 +396,11 @@ export const freehandMode = {
       startLeft = parseFloat(getComputedStyle(group).left);
       startTop = parseFloat(getComputedStyle(group).top);
 
+      group.dataset.startLeft = startLeft;
+      group.dataset.startTop = startTop;
+      group.dataset.startPdfX = group.dataset.x;
+      group.dataset.startPdfY = group.dataset.y;
+
       document.onmousemove = onMove;
       document.onmouseup = onUp;
     };
@@ -411,14 +416,33 @@ export const freehandMode = {
     function onUp(e) {
       document.onmousemove = document.onmouseup = null;
 
+      // 【✅ 追記】移動前のデータを取得
+      const prevLeft = parseFloat(group.dataset.startLeft);
+      const prevTop = parseFloat(group.dataset.startTop);
+      const prevPdfX = parseFloat(group.dataset.startPdfX);
+      const prevPdfY = parseFloat(group.dataset.startPdfY);
+
+      // 変更後のDOM座標とPDF座標を計算
+      const newLeft = parseFloat(group.style.left);
+      const newTop = parseFloat(group.style.top);
+
       // PDF座標に変換してデータセット更新
-      const domX = parseFloat(group.style.left) - pageOffsetLeft;
-      const domY = parseFloat(group.style.top) - pageOffsetTop;
+      const domX = newLeft - pageOffsetLeft; // newLeftを使用
+      const domY = newTop - pageOffsetTop;   // newTopを使用
       const [pdfX, pdfY] = vp.convertToPdfPoint(domX, domY);
 
       // PDF座標更新
       group.dataset.x = pdfX;
       group.dataset.y = pdfY;
+
+      // 【✅ 追記】doOp を呼び出す
+      if (prevLeft !== newLeft || prevTop !== newTop) {
+        doOp(OP.moveFreehand(
+          group,
+          prevLeft, prevTop, newLeft, newTop,
+          prevPdfX, prevPdfY, pdfX, pdfY
+        ));
+      }
 
       // 位置変更をローカルストレージに保存
       const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
@@ -463,6 +487,9 @@ export const freehandMode = {
       startWidth = parseFloat(getComputedStyle(group).width);
       startHeight = parseFloat(getComputedStyle(group).height);
 
+      handle.dataset.startPdfW = group.dataset.w;
+      handle.dataset.startPdfH = group.dataset.h;
+
       document.onmousemove = doResize;
       document.onmouseup = endResize;
     };
@@ -487,14 +514,25 @@ export const freehandMode = {
     function endResize() {
       document.onmousemove = document.onmouseup = null;
 
+      const prevW = startWidth;
+      const prevH = startHeight;
+      const prevPdfW = parseFloat(handle.dataset.startPdfW);
+      const prevPdfH = parseFloat(handle.dataset.startPdfH);
+
+      const prevPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+
       const currentWidth = parseFloat(group.style.width);
       const currentHeight = parseFloat(group.style.height);
+      const toW = currentWidth;
+      const toH = currentHeight;
 
       const scaleX = currentWidth / startWidth;
       const scaleY = currentHeight / startHeight;
 
-      const pdfW = parseFloat(group.dataset.w) * scaleX;
-      const pdfH = parseFloat(group.dataset.h) * scaleY;
+      const pdfW = prevPdfW * scaleX;
+      const pdfH = prevPdfH * scaleY;
+      const toPdfW = pdfW;
+      const toPdfH = pdfH;
 
       // PDF座標に変換してデータセット更新
       group.dataset.w = pdfW;
@@ -517,6 +555,17 @@ export const freehandMode = {
         path.setAttribute('d', newD);
       });
 
+      const nextPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+
+      if (prevW !== toW || prevH !== toH) {
+        doOp(OP.resizeFreehand(
+          group,
+          prevW, prevH, toW, toH,
+          prevPdfW, prevPdfH, toPdfW, toPdfH,
+          prevPaths, // 👈 追加
+          nextPaths  // 👈 追加
+        ));
+      }
 
       const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
       const groupData = {
@@ -529,7 +578,9 @@ export const freehandMode = {
         color: group.dataset.color,
         paths: savedPaths
       };
+
       saveGroupLocally(groupData);
+      self.updateGroupElements(group);
     }
   },
 
@@ -653,10 +704,28 @@ export const freehandMode = {
 
       if (baseEl) {
         const id = baseEl.dataset.id;
+
+        const parent = baseEl.parentElement; // 親要素 (noteLayer) を取得
+
+        // 【✅ 修正: 削除前のデータを取得】
+        const deletedGroupData = { // freehandMode.js: saveGroupLocally と同じ形式のデータを復元用に作成
+          id: baseEl.dataset.id,
+          page: parseInt(baseEl.dataset.page),
+          x: parseFloat(baseEl.dataset.x),
+          y: parseFloat(baseEl.dataset.y),
+          w: parseFloat(baseEl.dataset.w),
+          h: parseFloat(baseEl.dataset.h),
+          color: baseEl.dataset.color,
+          paths: Array.from(baseEl.querySelectorAll('path')).map(p => p.getAttribute('d'))
+        };
+
         baseEl.remove();
         select(null);
 
         deleteGroupLocally(id);
+
+        // 【✅ 追記: doOp で削除操作を記録】
+        doOp(OP.deleteFreehand(baseEl, parent, deletedGroupData)); // Undo/Redo のためにデータを渡す
         freehandMode.redrawAll();
       }
     };
@@ -681,6 +750,16 @@ export const freehandMode = {
 
         const group = state.selected;
         if (group && group.classList.contains("freehand-group")) {
+          // 変更前の色を記録
+          const prevColorKey = group.dataset.color; // 【✅ 追加】
+          const newColorKey = key;                   // 【✅ 追加】
+
+          // 変更がない場合は何もしない (オプション)
+          if (prevColorKey === newColorKey) {
+            this.hideColorPalette();
+            return;
+          }
+
           const paths = group.querySelectorAll("path");
           paths.forEach(p => p.setAttribute("stroke", color));
 
@@ -691,6 +770,8 @@ export const freehandMode = {
           this.currentColor = key;
 
           this._applySelectedStyle(group);
+
+          doOp(OP.updateFreehandColor(group, prevColorKey, newColorKey));
 
           const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
           const groupData = {
@@ -799,6 +880,25 @@ export const freehandMode = {
         noteLayer.appendChild(group);
       }
     });
+  },
+
+  // 【✅ 追加】グループ要素に関連するUI要素を更新する関数
+  updateGroupElements(group) {
+    // 1. リサイズハンドルの位置を更新 (右下)
+    const handle = group.querySelector(".freehand-resize-handle");
+    if (handle) {
+      handle.style.right = "0px";
+      handle.style.bottom = "0px";
+    }
+
+    // 2. パレットの位置を更新
+    // 選択状態にあればパレットを再表示して位置を更新
+    if (state.selected === group) {
+      this.showColorPalette(group);
+    }
+
+    // 3. 再描画 (PDF Viewer のスケール変更などに対応)
+    this.redrawAll();
   }
 };
 
@@ -919,4 +1019,44 @@ export function restoreFreehands() {
     const lastGroup = freehands[freehands.length - 1];
     freehandMode.currentColor = lastGroup.color || defaultColorKey;
   }
+}
+
+export function saveAllFreehands() {
+    const freehandsData = [];
+    const noteLayer = document.getElementById("noteLayer");
+    
+    // noteLayer が存在しない、またはDOMがまだ準備されていない場合は処理をスキップ
+    if (!noteLayer) {
+        console.warn("⚠️ Cannot save all freehands: #noteLayer not found.");
+        return;
+    }
+
+    // DOM上の全てのフリーハンドグループを取得
+    const allGroups = noteLayer.querySelectorAll('.freehand-group');
+
+    allGroups.forEach(group => {
+        // saveGroupLocally と同様に、DOM要素の dataset と path の 'd' 属性からデータを抽出
+        const savedPaths = Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'));
+        
+        freehandsData.push({
+            id: group.dataset.id,
+            page: parseInt(group.dataset.page),
+            x: parseFloat(group.dataset.x),
+            y: parseFloat(group.dataset.y),
+            w: parseFloat(group.dataset.w),
+            h: parseFloat(group.dataset.h),
+            color: group.dataset.color,
+            paths: savedPaths
+        });
+    });
+
+    // 最終的に localStorage に保存するデータ構造を作成
+    const finalData = { freehands: freehandsData };
+
+    try {
+        localStorage.setItem(FREEHAND_KEY, JSON.stringify(finalData));
+        console.log(`✅ Saved ${freehandsData.length} freehand groups to localStorage (FREEHAND_KEY).`);
+    } catch (e) {
+        console.error("💾 全グループのローカル保存失敗:", e);
+    }
 }
