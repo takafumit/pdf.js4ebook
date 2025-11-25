@@ -1,6 +1,7 @@
 // freehandMode.js
 
 import { state, select, FREEHAND_KEY } from "./noteExtension.js";
+import { doOp, OP } from './undoRedoManager.js';
 
 /* ---------- 定義と設定 ---------- */
 const strokes = [];
@@ -350,6 +351,8 @@ export const freehandMode = {
 
     // 既存のフリーハンドデータを取得し、新しいグループデータを追加して保存し直す
     saveGroupLocally(singleGroupData);
+    const parent = noteLayer;
+    doOp(OP.createFreehand(group, parent, singleGroupData));
   },
 
   computeBoundingBox(strokesArray) {

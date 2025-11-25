@@ -1,6 +1,7 @@
 import { state, $, highlightColors } from './noteExtension.js';
 import { saveAllHighlights } from './highlightMode.js';
 import { scheduleSave } from './noteAndHighlightManager.js';
+import { deleteGroupLocally, saveGroupLocally, freehandMode } from './freehandMode.js';
 
 /* ---------- Undo/Redo ---------- */
 export const OP = {
@@ -11,12 +12,14 @@ export const OP = {
   update: (el, prev, next) => ({ action: "update", note: el, prev, next }),
   updateColor: (el, prev, next) => ({ action: "updateColor", note: el, prev, next }),
   updateStyle: (el, prev, next) => ({ action: "updateStyle", note: el, prev, next }),
+  createFreehand: (el, parent, data) => ({ action: "createFreehand", note: el, parent, data }),
+  deleteFreehand: (el, parent, data) => ({ action: "deleteFreehand", note: el, parent, data })
 };
 
 // Undo/Redo 対応のノート操作関数
 export function exec(op) {
   const note = op.note;
-  
+
   switch (op.action) {
     case "create":
       console.log("exec create:", note);
@@ -61,6 +64,26 @@ export function exec(op) {
       }
       break;
 
+    case "createFreehand":
+      console.log("restoring freehand group:", note);
+      // 1. DOMへの再追加
+      op.parent.appendChild(note);
+
+      // 2. ローカルストレージへの復元 (op.data を使用)
+      // freehandModeから import した saveGroupLocally を呼び出す
+      saveGroupLocally(op.data);
+
+      // 3. 再描画 (freehandMode.js に依存)
+      // redrawGroup のような関数があればそれを使用し、なければ freehandMode.redrawAll()
+      freehandMode.redrawAll();
+      break;
+
+    case "deleteFreehand":
+      console.log("removing freehand group:", note);
+      note.remove();
+      deleteGroupLocally(op.note.dataset.id);
+      break;
+
     default:
       console.warn("Unknown op:", op);
   }
@@ -90,6 +113,12 @@ export function invert(op) {
       break;
     case "updateStyle":
       [inv.prev, inv.next] = [op.next, op.prev];
+      break;
+    case "createFreehand":
+      inv.action = "deleteFreehand";
+      break;
+    case "deleteFreehand":
+      inv.action = "createFreehand";
       break;
   }
   return inv;

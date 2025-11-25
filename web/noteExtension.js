@@ -112,8 +112,7 @@ function initFull() {
     if (except !== "freehand") {
       state.freehandMode = false;
       freehandBtn.classList.remove("toggled");
-      // freehandModeが有効であれば無効化する
-      freehandMode.disable(); 
+      freehandMode.disable();
     }
   }
 
@@ -265,6 +264,15 @@ function initFull() {
         saveAllHighlights();
         hideNoteColorPalette();
         hideHighlightColorPalette();
+      } else if (state.selected.classList.contains("freehand-group")) {
+        const group = state.selected;
+        const groupData = {
+          ...group.dataset,
+          paths: Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'))
+        };
+        doOp(OP.deleteFreehand(group, group.parentElement, groupData));
+        freehandMode.hideColorPalette();
+        select(null);
       }
     }
 
