@@ -363,13 +363,82 @@ function makeHighlightDraggableAndResizable(highlight, pageView) {
 
     if (textLayer) textLayer.style.userSelect = "";
 
-    // PDF座標に変換してデータ属性更新
-    const vp = pageView.viewport;
-    const domX = parseFloat(highlight.style.left) - pageView.div.offsetLeft;
-    const domY = parseFloat(highlight.style.top) - pageView.div.offsetTop;
+    // ----------------------------------------------------
+    // ページ移動とDOM更新ロジック (テキストボックスと同様)
+
+    // ハイライトの現在の画面上の位置を取得
+    const highlightRect = highlight.getBoundingClientRect();
+
+    // ハイライトの中心座標を計算 (ページ判定の基準とする)
+    const highlightCenterY = highlightRect.top + (highlightRect.height / 2);
+
+    let newPageNum = parseInt(highlight.dataset.page); // 元のページ番号を保持
+    let targetPageView = null;
+    const viewer = PDFViewerApplication.pdfViewer;
+
+    // 全てのページビューをループし、中心座標がどのページに属するかを判定
+    for (let i = 0; i < viewer._pages.length; i++) {
+      const pv = viewer.getPageView(i);
+      const rect = pv.div.getBoundingClientRect();
+
+      // Y座標（縦方向）の範囲内にあるかを中心にチェック
+      if (highlightCenterY >= rect.top && highlightCenterY <= rect.bottom) {
+        targetPageView = pv;
+        newPageNum = i + 1; // 新しいページ番号を更新
+        break;
+      }
+    }
+
+    // ページが見つかった場合のみ、DOMとデータセットを操作
+    if (targetPageView) {
+      const originalPageNum = parseInt(highlight.dataset.page);
+
+      // ページ番号が変更された場合、データセットを更新
+      if (originalPageNum !== newPageNum) {
+        highlight.dataset.page = newPageNum;
+      }
+
+      // ページを跨いだ移動に対応するための DOM移動
+      const currentHighlightLayer = highlight.parentElement;
+      // 注釈レイヤーを取得 (#noteLayer に入っていることを前提)
+      const targetHighlightLayer = targetPageView.div.querySelector('.annotationLayer #noteLayer');
+
+      if (targetHighlightLayer && currentHighlightLayer !== targetHighlightLayer) {
+
+        // DOM移動に伴う座標の再計算 (新しい親レイヤーからの相対位置に修正)
+        const targetRect = targetHighlightLayer.getBoundingClientRect();
+
+        const newLeft = highlightRect.left - targetRect.left;
+        const newTop = highlightRect.top - targetRect.top;
+
+        highlight.style.left = `${newLeft}px`;
+        highlight.style.top = `${newTop}px`;
+
+        // DOMを移動
+        targetHighlightLayer.appendChild(highlight);
+      }
+    }
+
+    // 1. 最新のページ番号（移動後のデータセット）を取得
+    const finalPageNum = parseInt(highlight.dataset.page);
+
+    // 2. そのページ番号に対応する最新の pageView オブジェクトを PDFViewerApplication から取得
+    const finalPageView = PDFViewerApplication.pdfViewer.getPageView(finalPageNum - 1);
+
+    // 3. 取得した finalPageView を使って PDF座標に変換
+    const vp = finalPageView.viewport;
+
+    // ページのオフセットを引いてDOM座標を計算 (元のロジックを維持)
+    const domX = parseFloat(highlight.style.left) - finalPageView.div.offsetLeft;
+    const domY = parseFloat(highlight.style.top) - finalPageView.div.offsetTop;
+
     const [pdfX, pdfY] = vp.convertToPdfPoint(domX, domY);
     highlight.dataset.x = pdfX;
     highlight.dataset.y = pdfY;
+
+    // width/height のデータセットも更新（リロード時にサイズが維持されるように）
+    highlight.dataset.w = parseFloat(highlight.style.width) / vp.scale;
+    highlight.dataset.h = parseFloat(highlight.style.height) / vp.scale;
 
     const toLeft = parseFloat(highlight.style.left);
     const toTop = parseFloat(highlight.style.top);

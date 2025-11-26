@@ -449,11 +449,11 @@ document.getElementById("findButton").addEventListener("click", () => {
     initFull();
     PDFViewerApplication.eventBus.on("pagesloaded", () => {
       loadAllFromServer();
-      // 🚨 修正点: restoreFreehands を setTimeout で遅延させる 🚨
-      setTimeout(() => {
-        console.log("restoreFreehands start (Delayed)");
-        restoreFreehands();
-        console.log("restoreFreehands end (Delayed)");
-      }, 200); // 100ミリ秒の遅延（環境に応じて調整可能）
+      // // 🚨 修正点: restoreFreehands を setTimeout で遅延させる 🚨
+      // setTimeout(() => {
+      //   console.log("restoreFreehands start (Delayed)");
+      //   restoreFreehands();
+      //   console.log("restoreFreehands end (Delayed)");
+      // }, 200); // 100ミリ秒の遅延（環境に応じて調整可能）
     });
   });

@@ -2,6 +2,7 @@
 
 import { state, select, FREEHAND_KEY, domToPdf } from "./noteExtension.js";
 import { doOp, OP } from './undoRedoManager.js';
+import { saveFreehandsToServer } from "./serverStorage.js";
 
 /* ---------- 定義と設定 ---------- */
 const strokes = [];
@@ -351,6 +352,7 @@ export const freehandMode = {
 
     // 既存のフリーハンドデータを取得し、新しいグループデータを追加して保存し直す
     saveGroupLocally(singleGroupData);
+    saveFreehandsToServer();
     const parent = noteLayer;
     doOp(OP.createFreehand(group, parent, singleGroupData));
   },
@@ -422,7 +424,7 @@ export const freehandMode = {
       // ページ番号を取得
       const pageNum = parseInt(group.dataset.page);
 
-      // 【🔥🔥🔥 修正点 🔥🔥🔥】domToPdf を使って正確な PDF 座標を取得する
+      // domToPdf を使って正確な PDF 座標を取得する
       const { x: pdfX, y: pdfY } = domToPdf(group, pageNum);
 
       // 既存のDOM座標を取得 (Undo/Redo用)
@@ -462,6 +464,7 @@ export const freehandMode = {
         paths: savedPaths
       };
       saveGroupLocally(groupData);
+      saveFreehandsToServer();
     }
 
     group.addEventListener("mousedown", onMouseDown);
@@ -567,8 +570,8 @@ export const freehandMode = {
           group,
           prevW, prevH, toW, toH,
           prevPdfW, prevPdfH, toPdfW, toPdfH,
-          prevPaths, // 👈 追加
-          nextPaths  // 👈 追加
+          prevPaths,
+          nextPaths
         ));
       }
 
@@ -585,6 +588,7 @@ export const freehandMode = {
       };
 
       saveGroupLocally(groupData);
+      saveFreehandsToServer();
       self.updateGroupElements(group);
     }
   },
@@ -790,6 +794,7 @@ export const freehandMode = {
             paths: savedPaths
           };
           saveGroupLocally(groupData);
+          saveFreehandsToServer();
 
           document.dispatchEvent(
             new CustomEvent("freehand:colorChanged", { detail: { group, color: key } })

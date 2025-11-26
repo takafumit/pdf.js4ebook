@@ -3,11 +3,11 @@
 // restoreNotesFromData(notes), restoreHighlightsFromData(highlights)
 // loadNotesFromServer(), loadHighlightsFromServer(), loadAllFromServer()
 
-import { select } from './noteExtension.js';
+import { select, FREEHAND_KEY } from './noteExtension.js';
 import { enableDrag, enableResize, commit, saveAllNotes, showNoteTextStylePalette } from './noteMode.js';
 import { toggleHighlightSelection } from './highlightMode.js';
 import { updateNotePositions, showLinkStatus } from './noteAndHighlightManager.js';
-import { freehandMode } from './freehandMode.js';
+import { freehandMode, restoreFreehands } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
@@ -76,13 +76,6 @@ function saveHighlightsToServer() {
     .then(res => res.json())
     .then(data => console.log("🖍️ ハイライトの情報をサーバーに保存:", data))
     .catch(err => console.error("ハイライト保存エラー:", err));
-}
-
-// まとめて保存
-function saveAllToServer() {
-  saveNotesToServer();
-  saveHighlightsToServer();
-  // saveFreehandToServer();
 }
 
 // ボタンから直接保存
@@ -229,105 +222,75 @@ function loadHighlightsFromServer() {
     .catch(err => console.error("ハイライト取得エラー:", err));
 }
 
-// まとめて復元
-function loadAllFromServer() {
-  loadNotesFromServer();
-  loadHighlightsFromServer();
-  // loadFreehandsFromServer();
-}
-
 // ボタンから復元する場合
 document.getElementById("loadAnnotationButton").addEventListener("click", () => {
   loadAllFromServer();
   showLinkStatus("ローカルホストから復元しました");
 });
 
-// function saveFreehandToServer() {
-//     const groups = Array.from(document.querySelectorAll(".freehand-group")).map(g => ({
-//         id: g.dataset.id,
-//         page: parseInt(g.dataset.page),
-//         x: parseFloat(g.dataset.x),
-//         y: parseFloat(g.dataset.y),
-//         w: parseFloat(g.dataset.w),
-//         h: parseFloat(g.dataset.h),
-//         color: g.dataset.color || "red",
-//         // SVG内のパスを文字列として保存
-//         pathData: JSON.stringify(Array.from(g.querySelectorAll("path")).map(p => p.getAttribute("d")))
-//     }));
+function saveFreehandsToServer() {
+  const groups = Array.from(document.querySelectorAll(".freehand-group")).map(g => ({
+    id: g.dataset.id,
+    page: parseInt(g.dataset.page),
+    x: parseFloat(g.dataset.x),
+    y: parseFloat(g.dataset.y),
+    w: parseFloat(g.dataset.w),
+    h: parseFloat(g.dataset.h),
+    color: g.dataset.color || "red",
+    paths: Array.from(g.querySelectorAll("path")).map(p => p.getAttribute("d"))
+  }));
 
-//     fetch("http://localhost:3000/freehands", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ freehands: groups })
-//     })
-//     .then(res => res.json())
-//     .then(data => console.log("🖌 フリーハンドをサーバーに保存:", data))
-//     .catch(err => console.error("フリーハンド保存エラー:", err));
-// }
+  fetch("http://localhost:3000/freehands", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ freehands: groups })
+  })
+    .then(res => res.json())
+    .then(data => console.log("🖌 フリーハンド保存:", data))
+    .catch(err => console.error("保存エラー:", err));
+}
 
-// function restoreFreehandFromData(freehands) {
-//     const noteLayer = document.getElementById("noteLayer");
-//     if (!noteLayer || !Array.isArray(freehands)) return;
+function loadFreehandsFromServer() {
+  fetch("http://localhost:3000/freehands")
+    .then(res => res.json())
+    .then(data => {
+      const freehandsToRestore = data.map(fh => ({
+        ...fh,
+        // paths が JSON文字列 ('["M...", "L..."]') のため、配列に戻す
+        paths: JSON.parse(fh.paths || "[]")
+      }));
 
-//     freehands.forEach(g => {
-//         const pageView = PDFViewerApplication.pdfViewer.getPageView(g.page - 1);
-//         if (!pageView) return;
-//         const vp = pageView.viewport;
+      localStorage.setItem(FREEHAND_KEY, JSON.stringify({ freehands: freehandsToRestore }));
+      restoreFreehands(); // ✅ 復元関数を呼び出す
+      console.log("🖌 フリーハンド復元:", freehandsToRestore.length, "件");
+    })
+    .catch(err => console.error("取得エラー:", err));
+}
 
-//         const group = document.createElement("div");
-//         group.className = "freehand-group";
-//         Object.assign(group.dataset, g);
+// まとめて保存
+function saveAllToServer() {
+  saveNotesToServer();
+  saveHighlightsToServer();
+  saveFreehandsToServer();
+}
 
-//         const [viewX, viewY] = vp.convertToViewportPoint(g.x, g.y);
-//         Object.assign(group.style, {
-//             position: "absolute",
-//             left: `${viewX + pageView.div.offsetLeft}px`,
-//             top: `${viewY + pageView.div.offsetTop}px`,
-//             width: `${g.w * vp.scale}px`,
-//             height: `${g.h * vp.scale}px`,
-//             cursor: "move",
-//             zIndex: 2000
-//         });
-
-//         const svgNS = "http://www.w3.org/2000/svg";
-//         const innerSvg = document.createElementNS(svgNS, "svg");
-//         innerSvg.setAttribute("width", g.w * vp.scale);
-//         innerSvg.setAttribute("height", g.h * vp.scale);
-//         innerSvg.setAttribute("viewBox", `0 0 ${g.w * vp.scale} ${g.h * vp.scale}`);
-//         group.appendChild(innerSvg);
-
-//         g.paths.forEach(d => {
-//             const path = document.createElementNS(svgNS, "path");
-//             path.setAttribute("d", d);
-//             path.setAttribute("stroke", g.color);
-//             path.setAttribute("stroke-width", 2);
-//             path.setAttribute("fill", "none");
-//             innerSvg.appendChild(path);
-//         });
-
-//         noteLayer.appendChild(group);
-
-//         freehandMode.makeGroupDraggableAndResizable(group, pageView);
-//     });
-
-//     console.log("🖌 フリーハンド復元完了:", freehands.length, "件");
-// }
-
-// function loadFreehandsFromServer() {
-//     fetch("http://localhost:3000/freehands")
-//         .then(res => res.json())
-//         .then(data => restoreFreehandFromData(data))
-//         .catch(err => console.error("フリーハンド取得エラー:", err));
-// }
+// まとめて復元
+function loadAllFromServer() {
+  loadNotesFromServer();
+  loadHighlightsFromServer();
+  loadFreehandsFromServer();
+}
 
 export {
   saveNotesToServer,
   saveHighlightsToServer,
+  saveFreehandsToServer,
   saveAllToServer,
   restoreNotesFromData,
   restoreHighlightsFromData,
   loadNotesFromServer,
   loadHighlightsFromServer,
+  loadFreehandsFromServer,
   loadAllFromServer
 };
 
@@ -365,6 +328,19 @@ CREATE TABLE highlights (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS freehands (
+  id VARCHAR(100) PRIMARY KEY,
+  page INT NOT NULL,
+  x FLOAT NOT NULL,
+  y FLOAT NOT NULL,
+  w FLOAT NOT NULL,
+  h FLOAT NOT NULL,
+  color VARCHAR(20),
+  paths TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 6. サーバーの起動と確認
 サーバーを起動するには以下のコマンドを実行する。

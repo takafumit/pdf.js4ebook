@@ -48,11 +48,12 @@ export function createDeleteButton() {
   if (!btn) return;
 
   btn.onclick = () => {
-    if (!confirm("すべてのテキストボックスとハイライトを削除します。\n削除後は元に戻せません。よろしいですか？")) return;
+    if (!confirm("すべての注釈を削除します。\n削除後は元に戻せません。よろしいですか？")) return;
 
     const elements = [
       ...document.querySelectorAll(".note"),
-      ...document.querySelectorAll(".highlight")
+      ...document.querySelectorAll(".highlight"),
+      ...document.querySelectorAll(".freehand")
     ];
     elements.forEach(hl => {
       doOp(OP.delete(hl, hl.parentElement));
