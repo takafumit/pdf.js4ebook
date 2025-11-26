@@ -26,7 +26,7 @@ export const state = {
 
   selected: null,
   undoStack: [],
-  redoStack: [],F
+  redoStack: [],
   linkingNote: null
 };
 
