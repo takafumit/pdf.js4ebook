@@ -1,5 +1,5 @@
 import { state, select, domToPdf, $, TEXT_KEY, setHighlightSelectable } from './noteExtension.js';
-import { scheduleSave, showLinkStatus } from './noteAndHighlightManager.js';
+import { scheduleSave, showLinkStatus } from './annotationManager.js';
 import { saveNotesToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
 

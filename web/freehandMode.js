@@ -1,5 +1,3 @@
-// freehandMode.js
-
 import { state, select, FREEHAND_KEY, domToPdf } from "./noteExtension.js";
 import { doOp, OP } from './undoRedoManager.js';
 import { saveFreehandsToServer } from "./serverStorage.js";
@@ -437,12 +435,6 @@ export const freehandMode = {
       group.dataset.x = pdfX;
       group.dataset.y = pdfY;
 
-      // 🚨 注意: domToPdfはw, hも返しますが、移動時はサイズは変わらないので、
-      // w, hのdataset更新は不要か、または group.dataset.w/h を使うべきです。
-      // サイズも再計算する場合は { x: pdfX, y: pdfY, w: pdfW, h: pdfH } のように受け取ります。
-
-      // ... (続く doOp と saveGroupLocally のロジック) ...
-
       if (prevPdfX !== pdfX || prevPdfY !== pdfY) {
         doOp(OP.moveFreehand(
           group,
@@ -456,8 +448,8 @@ export const freehandMode = {
       const groupData = {
         id: group.dataset.id,
         page: pageNum,
-        x: pdfX, // ✅ 更新されたPDF座標
-        y: pdfY, // ✅ 更新されたPDF座標
+        x: pdfX, // 更新されたPDF座標
+        y: pdfY, // 更新されたPDF座標
         w: parseFloat(group.dataset.w),
         h: parseFloat(group.dataset.h),
         color: group.dataset.color,

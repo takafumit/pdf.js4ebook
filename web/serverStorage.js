@@ -6,7 +6,7 @@
 import { select, FREEHAND_KEY } from './noteExtension.js';
 import { enableDrag, enableResize, commit, saveAllNotes, showNoteTextStylePalette } from './noteMode.js';
 import { toggleHighlightSelection } from './highlightMode.js';
-import { updateNotePositions, showLinkStatus } from './noteAndHighlightManager.js';
+import { updateNotePositions, showLinkStatus } from './annotationManager.js';
 import { freehandMode, restoreFreehands } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */

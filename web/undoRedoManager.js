@@ -1,6 +1,6 @@
 import { state, $, highlightColors } from './noteExtension.js';
 import { saveAllHighlights } from './highlightMode.js';
-import { scheduleSave } from './noteAndHighlightManager.js';
+import { scheduleSave } from './annotationManager.js';
 import { deleteGroupLocally, saveGroupLocally, freehandMode, freehandColors } from './freehandMode.js';
 
 /* ---------- Undo/Redo ---------- */

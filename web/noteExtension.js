@@ -9,7 +9,7 @@ import { showSidebar } from './sidebarManager.js';
 import { toggleBubbleMode, updateBubblePositions } from './noteBubble.js';
 import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, saveAllHighlights, createFreeHighlight } from './highlightMode.js';
 import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
-import { updateNotePositions, createDeleteButton, showLinkStatus } from './noteAndHighlightManager.js';
+import { updateNotePositions, createDeleteButton, showLinkStatus } from './annotationManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
 import { freehandMode, restoreFreehands } from './freehandMode.js';
 
@@ -26,7 +26,7 @@ export const state = {
 
   selected: null,
   undoStack: [],
-  redoStack: [],
+  redoStack: [],F
   linkingNote: null
 };
 

@@ -28,7 +28,7 @@ export function toggleBubbleMode() {
 
     state.highlightMode = false;
     state.freeHighlightMode = false;
-    if (highlightBtn) highlightBtn.classList.remove("toggled");  
+    if (highlightBtn) highlightBtn.classList.remove("toggled");
 
     document.querySelectorAll(".note").forEach(note => {
       if (note.dataset.bubbleAttached === "true") return;

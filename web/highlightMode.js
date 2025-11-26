@@ -1,6 +1,6 @@
 import { state, select, domToPdf, $, highlightColors, HIGHLIGHT_KEY } from './noteExtension.js';
 import { hideNoteColorPalette } from './noteMode.js';
-import { updateNotePositions, scheduleSave } from './noteAndHighlightManager.js';
+import { updateNotePositions, scheduleSave } from './annotationManager.js';
 import { saveHighlightsToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
 
