@@ -41,7 +41,8 @@ function saveNotesToServer() {
       bubbleAttached: note.dataset.bubbleAttached === "true",
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
-      linkedText: note.dataset.linkedText || ""
+      linkedText: note.dataset.linkedText || "",
+      attribute: note.dataset.attribute || ""
     };
   });
 

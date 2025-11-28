@@ -107,10 +107,11 @@
   /* 2025/10/29 */
   --editor-toolbar-delete-image: url(images/editor-toolbar-delete.svg);
   --toolbarButton-speech-bubble-icon: url(images/original-speech-bubble.svg);
-  --toolbarButton-show-icon: url(images/original-showNote.svg);
+  --toolbarButton-show-icon: url(images/original-sidebar.svg);
   --toolbarButton-saveAnnotation-icon: url(images/original-download.svg);
   --toolbarButton-loadAnnotation-icon: url(images/original-load.svg);
   --toolbarButton-freehand-icon: url(images/original-freehand.svg);
+  --toolbarButton-topicView-icon: url(images/original-showNote.svg);
 
   --toolbarButton-editorSignature-icon: url(images/toolbarButton-editorSignature.svg);
   --toolbarButton-menuArrow-icon: url(images/toolbarButton-menuArrow.svg);
@@ -416,6 +417,9 @@ body {
 }
 #addFreehandButton::before{
   mask-image: var(--toolbarButton-editorInk-icon);
+}
+#topicViewButton::before{
+  mask-image: var(--toolbarButton-topicView-icon);
 }
 
 /* もともと表示されている注釈機能を非表示に */

@@ -23,6 +23,7 @@ function addNote(e) {
   note.dataset.fontSize = "14";
   note.dataset.color = "black";
   note.dataset.bubbleAttached = "false";
+  note.dataset.attribute = "";
 
   const viewerContainer = $("viewerContainer");
   const viewerRect = viewerContainer.getBoundingClientRect();
@@ -170,8 +171,24 @@ function enableDrag(note) {
     }
 
     // PDF座標の再計算 (更新された newPageNum を使用)
+    // const { x, y, w, h } = domToPdf(note, newPageNum);
+    // note.dataset.x = x; note.dataset.y = y; note.dataset.w = w; note.dataset.h = h;
+
+    // PDF座標の再計算 (domToPdfは現在のDOMサイズと位置を使ってdatasetを更新します)
     const { x, y, w, h } = domToPdf(note, newPageNum);
-    note.dataset.x = x; note.dataset.y = y; note.dataset.w = w; note.dataset.h = h;
+    note.dataset.x = x;
+    note.dataset.y = y;
+    // w, h は dataset に保存されている PDF 単位のサイズです
+
+    // 🚨 スケール変更によるサイズ変動を防ぐための再設定
+    const newScale = targetPageView.viewport.scale;
+    const pdfW = parseFloat(note.dataset.w);
+    const pdfH = parseFloat(note.dataset.h);
+
+    // dataset の PDF 単位のサイズを使って、DOMのサイズを現在のスケールで正確に再設定
+    // これにより、DOM移動後のブラウザによるサイズ変化やスクロールによるズレを打ち消します。
+    note.style.width = `${pdfW * newScale}px`;
+    note.style.height = `${pdfH * newScale}px`;
 
     const toLeft = parseFloat(note.style.left);
     const toTop = parseFloat(note.style.top);
@@ -278,7 +295,8 @@ function saveAllNotes() {
       bubbleAttached: note.dataset.bubbleAttached === "true",
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
-      linkedText: note.dataset.linkedText || ""
+      linkedText: note.dataset.linkedText || "",
+      attribute: note.dataset.attribute || ""
     });
   });
   localStorage.setItem(TEXT_KEY, JSON.stringify({ notes }));
@@ -363,6 +381,51 @@ function showNoteTextStylePalette(note) {
   });
 
   palette.appendChild(colorRow);
+
+  const attributeRow = document.createElement("div");
+  attributeRow.style.display = "flex";
+  attributeRow.style.gap = "6px";
+  attributeRow.style.marginTop = "6px"; // 視覚的な区切り
+
+  // 属性の選択肢を定義
+  const attributes = [
+    { label: "補足", value: "detail", color: "#4a90e2" },
+    { label: "疑問", value: "question", color: "#ff8c00" },
+    { label: "考え", value: "reflection", color: "#32cd32" },
+    { label: "その他", value: "other", color: "#808080" }
+  ];
+
+  attributes.forEach(attr => {
+    const btn = document.createElement("button");
+    btn.textContent = attr.label;
+    btn.style.padding = "4px 8px";
+    btn.style.border = `1px solid ${attr.color}`;
+    btn.style.backgroundColor = note.dataset.attribute === attr.value ? attr.color : 'white';
+    btn.style.color = note.dataset.attribute === attr.value ? 'white' : 'black';
+
+    btn.onclick = () => {
+      const currentAttr = note.dataset.attribute;
+      let nextAttr = attr.value;
+
+      // 既に選択されていたら解除するトグル動作
+      if (currentAttr === attr.value) {
+        nextAttr = "";
+      }
+
+      const prev = { attribute: currentAttr || "" };
+      const next = { attribute: nextAttr };
+
+      // Undo 対応
+      doOp(OP.updateStyle(note, prev, next));
+
+      // UIを更新（即座に反映させるため）
+      note.dataset.attribute = nextAttr;
+      showNoteTextStylePalette(note);
+    };
+    attributeRow.appendChild(btn);
+  });
+
+  palette.appendChild(attributeRow);
 
   // 2025/10/26
   // 3行目：紐付けボタン
