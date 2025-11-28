@@ -11,7 +11,8 @@ import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, sav
 import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './annotationManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
-import { freehandMode, restoreFreehands } from './freehandMode.js';
+import { freehandMode } from './freehandMode.js';
+import { setupTopicViewButton } from './topicView.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
@@ -360,8 +361,6 @@ document.addEventListener("mouseup", () => {
     // ハイライト操作を再び有効化
     setHighlightSelectable(false);
 
-    // flashLinkedRange(range);
-
     // 選択解除 & 保存
     selection.removeAllRanges();
     saveAllNotes();
@@ -385,6 +384,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!btn) return;
 
   btn.addEventListener("click", showSidebar);
+});
+
+// /* ---------- トピックビューボタン ---------- */
+document.addEventListener("DOMContentLoaded", () => {
+  setupTopicViewButton();
 });
 
 // /* ---------- 吹き出しボタン関連 ---------- */
