@@ -3,7 +3,7 @@ import { saveAllNotes } from './noteMode.js';
 import { makeHighlightDraggableAndResizable, saveAllHighlights } from './highlightMode.js';
 import { saveAllToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
-import { saveAllFreehands } from './freehandMode.js';
+import { saveAllFreehands, deleteGroupLocally } from './freehandMode.js';
 
 /* ---------- 保存処理 ---------- */
 export function scheduleSave() {
@@ -11,8 +11,8 @@ export function scheduleSave() {
   window._saveTimer = setTimeout(() => {
     saveAllNotes();
     saveAllHighlights();
-    saveAllToServer();
     saveAllFreehands();
+    saveAllToServer();
   }, 300);
 }
 
@@ -53,12 +53,19 @@ export function createDeleteButton() {
     const elements = [
       ...document.querySelectorAll(".note"),
       ...document.querySelectorAll(".highlight"),
-      ...document.querySelectorAll(".freehand")
+      ...document.querySelectorAll(".freehand-group")
     ];
     elements.forEach(hl => {
       doOp(OP.delete(hl, hl.parentElement));
+      if (hl.classList.contains('freehand-group')) {
+        deleteGroupLocally(hl.dataset.id);
+      }
       hl.remove();
     });
+    const freeSvg = document.querySelector("#noteLayer .freehandLayer");
+    if (freeSvg) {
+      while (freeSvg.firstChild) freeSvg.removeChild(freeSvg.firstChild);
+    }
 
     select(null);
     scheduleSave();

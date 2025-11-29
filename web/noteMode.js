@@ -317,7 +317,7 @@ function showNoteTextStylePalette(note) {
     palette.id = "noteTextStylePalette";
     palette.style.position = "absolute";
     palette.style.display = "flex";
-    palette.style.flexDirection = "column"; // 縦方向に並べる
+    palette.style.flexDirection = "column";
     palette.style.gap = "6px";
     palette.style.padding = "6px";
     palette.style.border = "1px solid #bbb";
@@ -329,10 +329,10 @@ function showNoteTextStylePalette(note) {
   palette.innerHTML = "";
 
   // 1行目：文字サイズ
-  // 文字サイズの行（S/M/L/XL版）
   const sizeRow = document.createElement("div");
   sizeRow.style.display = "flex";
   sizeRow.style.gap = "6px";
+  sizeRow.style.width = "100%";
 
   const sizes = [
     { label: "S", value: 12 },
@@ -344,48 +344,46 @@ function showNoteTextStylePalette(note) {
   sizes.forEach(s => {
     const btn = document.createElement("button");
     btn.textContent = s.label;
+    btn.style.flexGrow = 1;
+    btn.style.width = `${100 / sizes.length}%`;
 
     btn.onclick = () => {
       const prev = { fontSize: note.dataset.fontSize };
       const next = { fontSize: s.value };
 
-      // Undo 対応
       doOp(OP.updateStyle(note, prev, next));
     };
-
     sizeRow.appendChild(btn);
   });
-
   palette.appendChild(sizeRow);
-
 
   // 2行目：文字色
   const colorRow = document.createElement("div");
   colorRow.style.display = "flex";
   colorRow.style.gap = "6px";
-  ["black", "red", "blue", "green", "orange", "purple"].forEach(color => {
+  colorRow.style.width = "100%";
+  const colors = ["black", "red", "blue", "green", "orange", "purple"];
+  colors.forEach(color => {
     const btn = document.createElement("button");
     btn.style.background = color;
-    btn.style.width = "20px"; btn.style.height = "20px";
+    btn.style.width = `${100 / colors.length}%`;
+    btn.style.height = "20px";
     btn.style.border = "1px solid #666";
 
     btn.onclick = () => {
       const prev = { color: note.dataset.color };
       const next = { color };
-
-      // Undo 対応
       doOp(OP.updateStyle(note, prev, next));
     };
-
     colorRow.appendChild(btn);
   });
-
   palette.appendChild(colorRow);
 
+  // 3行目：属性追加
   const attributeRow = document.createElement("div");
   attributeRow.style.display = "flex";
   attributeRow.style.gap = "6px";
-  attributeRow.style.marginTop = "6px"; // 視覚的な区切り
+  attributeRow.style.marginTop = "6px";
 
   // 属性の選択肢を定義
   const attributes = [
@@ -406,49 +404,63 @@ function showNoteTextStylePalette(note) {
     btn.onclick = () => {
       const currentAttr = note.dataset.attribute;
       let nextAttr = attr.value;
-
-      // 既に選択されていたら解除するトグル動作
       if (currentAttr === attr.value) {
         nextAttr = "";
       }
 
       const prev = { attribute: currentAttr || "" };
       const next = { attribute: nextAttr };
-
-      // Undo 対応
       doOp(OP.updateStyle(note, prev, next));
 
-      // UIを更新（即座に反映させるため）
       note.dataset.attribute = nextAttr;
       showNoteTextStylePalette(note);
     };
     attributeRow.appendChild(btn);
   });
-
   palette.appendChild(attributeRow);
 
-  // 2025/10/26
-  // 3行目：紐付けボタン
+  // 4行目：紐付けボタン
+  const linkRow = document.createElement("div");
+  linkRow.style.display = "flex";
+  linkRow.style.gap = "6px";
+  linkRow.style.marginTop = "6px";
+  linkRow.style.width = "100%";
+
   const linkBtn = document.createElement("button");
   linkBtn.textContent = "紐付け追加";
   linkBtn.title = "PDFに紐付け";
+  linkBtn.style.flexGrow = 1;
+  linkBtn.style.width = "50%";
   linkBtn.onclick = () => {
+    const noteBtn = $("addNoteButton");
+    const highlightBtn = $("addHighlightButton");
+    const freeHighlightBtn = $("addFreeHighlightButton");
+    const freehandBtn = $("addFreehandButton");
+
+    noteBtn.classList.remove("toggled");
+    highlightBtn.classList.remove("toggled");
+    freeHighlightBtn.classList.remove("toggled");
+    freehandBtn.classList.remove("toggled");
+
     state.linkingNote = note;
     state.textMode = false;
     state.highlightMode = false;
     state.freeHighlightMode = false;
+    
     const vc = $("viewerContainer");
     if (vc) vc.style.cursor = "crosshair";
     console.log("ノートをPDFに紐付けする準備完了");
     showLinkStatus("紐付け開始");
     setHighlightSelectable(true);
   };
-  palette.appendChild(linkBtn);
+  linkRow.appendChild(linkBtn);
 
-  // 4行目：紐付け削除ボタン
+  // 紐付け削除ボタン
   const linkDelBtn = document.createElement("button");
   linkDelBtn.textContent = "紐付け削除";
   linkDelBtn.title = "PDFの紐付け削除";
+  linkDelBtn.style.flexGrow = 1;
+  linkDelBtn.style.width = "50%";
   linkDelBtn.onclick = e => {
     e.stopPropagation();
     note.dataset.linkedText = "";
@@ -456,11 +468,12 @@ function showNoteTextStylePalette(note) {
     showLinkStatus("紐付け削除完了");
     scheduleSave();
   };
-  palette.appendChild(linkDelBtn);
+  linkRow.appendChild(linkDelBtn);
+  palette.appendChild(linkRow);
 
   // 5行目：テキストボックス専用の削除ボタン
   const delBtn = document.createElement("button");
-  delBtn.textContent = "× 削除";
+  delBtn.textContent = "× テキストボックスの削除";
   delBtn.style.color = "white";
   delBtn.style.background = "red";
   delBtn.style.border = "none";
@@ -473,10 +486,8 @@ function showNoteTextStylePalette(note) {
     select(null);
     palette.remove();
   };
-
   palette.appendChild(delBtn);
 
-  // note の下に表示
   const rect = note.getBoundingClientRect();
   palette.style.left = `${rect.left}px`;
   palette.style.top = `${rect.bottom + 6}px`;

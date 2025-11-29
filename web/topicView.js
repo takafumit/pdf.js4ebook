@@ -1,4 +1,4 @@
-// topicView.js - 主要な要点に統合版
+// topicView.js - 主要な要点に統合版（ハイライト表示修正済み）
 
 /**
  * トピックビューのボタンイベントを設定し、表示/非表示を切り替える
@@ -46,29 +46,26 @@ function getOrCreateTopicViewContainer() {
     container.style.zIndex = '9990';
     container.style.padding = '20px 5%';
     container.style.fontFamily = 'sans-serif';
-    
-    // 【修正 1/3】キーボードイベントのデフォルト動作停止と伝播停止
-    // スクロールを発生させるキー (Space, 矢印キー) の動作を防止
+
+    // キーボードイベントのデフォルト動作停止と伝播停止
     container.addEventListener('keydown', (event) => {
         const scrollKeys = [
-            'Space',       // スペースキー (32)
-            'ArrowLeft',   // 左矢印キー (37)
-            'ArrowUp',     // 上矢印キー (38)
-            'ArrowRight',  // 右矢印キー (39)
-            'ArrowDown'    // 下矢印キー (40)
+            'Space',       // スペースキー (32)
+            'ArrowLeft',   // 左矢印キー (37)
+            'ArrowUp',     // 上矢印キー (38)
+            'ArrowRight',  // 右矢印キー (39)
+            'ArrowDown'    // 下矢印キー (40)
         ];
-        
+
         // スクロールに関連するキーのイベント伝播のみを停止
         if (scrollKeys.includes(event.key)) {
             event.stopPropagation(); // イベントの親要素への伝播を停止 (背景スクロールを防ぐ)
         }
     });
-    // tabIndexを追加することで、JavaScriptでフォーカスを当てられるようにする
-    // container.tabIndex = -1; は showTopicView で設定します。
 
     // 永続的なタイトルを追加
     const mainTitle = document.createElement('h1');
-    mainTitle.textContent = 'ノート - トピックビュー';
+    mainTitle.textContent = 'ノート';
     mainTitle.style.marginBottom = '20px';
     container.appendChild(mainTitle);
 
@@ -108,10 +105,10 @@ function getOrCreateTopicViewContainer() {
  */
 function hideTopicView(container) {
     container.style.display = 'none';
-    
-    // 【修正 2/3】tabIndexを削除し、フォーカスを外す
+
+    // tabIndexを削除し、フォーカスを外す
     container.removeAttribute('tabindex');
-    
+
     document.getElementById('viewerContainer').style.display = 'block';
 }
 
@@ -121,12 +118,10 @@ function hideTopicView(container) {
  */
 function showTopicView(container) {
     container.style.display = 'block';
-    
-    // 【修正 3/3】フォーカスを強制的にトピックビューに移動させる
+
+    // フォーカスを強制的にトピックビューに移動させる
     container.tabIndex = -1; // tabIndexを設定し、プログラムからフォーカス可能にする
     container.focus();
-    
-    // document.getElementById('viewerContainer').style.display = 'none'; // この行は既に削除済み
 }
 
 /**
@@ -151,16 +146,33 @@ export function renderTopicView(containerElement) {
         const isHighlight = el.classList.contains('highlight');
         const hasLinkedText = el.dataset.linkedText && el.dataset.linkedText.trim() !== '';
 
+        // 属性の取得と分類キーの決定
+        const noteAttribute = el.dataset.attribute || '';
         let attributeKey;
-        if (isHighlight || hasLinkedText) {
-            attributeKey = 'CORE_INSIGHTS';
+
+        if (isHighlight) {
+            // ハイライトは常に「要点」扱い
+            attributeKey = 'CORE_INSIGHTS_HIGHLIGHT';
+        } else if (noteAttribute) {
+            // テキストボックスに属性が設定されている場合、その属性キーをそのまま使用
+            attributeKey = noteAttribute.toUpperCase();
+        } else if (hasLinkedText) {
+            // 属性がなく、紐付けがあるノートも「要点」扱い
+            attributeKey = 'CORE_INSIGHTS_LINKED_NOTE';
         } else {
+            // それ以外の普通のノート
             attributeKey = 'OTHER_NOTE';
         }
 
         let content = el.textContent || '';
         let linkedText = el.dataset.linkedText || '';
         let highlightText = el.dataset.text || '';
+
+        if (isHighlight && highlightText.trim() === '') {
+             // 矩形ハイライトなど、テキスト情報がない場合は処理をスキップ
+             return; 
+        }
+
         const page = parseInt(el.dataset.page, 10); // ページ番号を数値として取得
 
         if (isHighlight) {
@@ -174,7 +186,7 @@ export function renderTopicView(containerElement) {
             page,
             type: isHighlight ? 'highlight' : 'note',
             isLinked: hasLinkedText,
-            attributeKey // ソートのためにキーも保持
+            attributeKey // 分類キーを保持
         });
     });
 
@@ -192,7 +204,7 @@ export function renderTopicView(containerElement) {
         if (aIsLinkedNote && !bIsLinkedNote) return -1; // a (テキストボックス) を優先
         if (!aIsLinkedNote && bIsLinkedNote) return 1;  // b (テキストボックス) を優先
 
-        return 0; 
+        return 0;
     });
     // ----------------------------
 
@@ -210,11 +222,45 @@ export function renderTopicView(containerElement) {
 
 
 /**
+ * 分類キーをユーザーフレンドリーな表示名に変換し、色を返す
+ * @param {string} key 分類キー
+ * @returns {{name: string, color: string}} 表示名と見出し色
+ */
+function getAttributeDetails(key) {
+    switch (key) {
+        // 要点（黄色）
+        case 'CORE_INSIGHTS_HIGHLIGHT': return { name: '要点（ハイライト）', color: '#ffc107' };
+        case 'CORE_INSIGHTS_LINKED_NOTE': return { name: '要点（紐付けノート）', color: '#ffc107' };
+
+        // 補足（水色）
+        case 'DETAIL': return { name: '補足', color: '#4a90e2' };
+        // 疑問（オレンジ）
+        case 'QUESTION': return { name: '疑問', color: '#ff8c00' };
+        // 考え（緑）
+        case 'REFLECTION': return { name: '考え', color: '#32cd32' };
+        // その他（グレー）
+        case 'OTHER': return { name: 'その他', color: '#808080' };
+
+        case 'OTHER_NOTE': return { name: '未分類のメモ', color: '#bdbdbd' };
+        default: return { name: '未分類', color: '#bdbdbd' };
+    }
+}
+
+
+/**
  * 分類されたデータを構造化して描画する (トピック見出しなし)
  */
 function drawAttributeGroupedData(targetElement, dataMap) {
-    // 【表示順】: 主要な要点 -> その他のノート
-    const attributeOrder = ['CORE_INSIGHTS', 'OTHER_NOTE'];
+    // 属性の表示順の定義
+    const attributeOrder = [
+        'CORE_INSIGHTS_HIGHLIGHT', // 要点（ハイライト）
+        'CORE_INSIGHTS_LINKED_NOTE', // 要点（紐付けノート）
+        'DETAIL', // 補足
+        'QUESTION', // 疑問
+        'REFLECTION', // 考え
+        'OTHER', // その他
+        'OTHER_NOTE' // 未分類
+    ];
 
     const allMemoSection = document.createElement('section');
     allMemoSection.style.marginBottom = '40px';
@@ -224,13 +270,15 @@ function drawAttributeGroupedData(targetElement, dataMap) {
         if (dataMap.has(attributeKey)) {
 
             // 属性ごとの見出し (h2 に格上げ)
+            const details = getAttributeDetails(attributeKey);
+
             const attributeTitle = document.createElement('h2');
-            attributeTitle.textContent = getAttributeDisplayName(attributeKey);
+            attributeTitle.textContent = details.name;
             attributeTitle.style.marginTop = '15px';
             attributeTitle.style.marginBottom = '15px';
-            attributeTitle.style.borderLeft = '6px solid #4a90e2';
+            attributeTitle.style.borderLeft = `6px solid ${details.color}`; // color を使用
             attributeTitle.style.paddingLeft = '10px';
-            attributeTitle.style.backgroundColor = '#eaf4ff';
+            attributeTitle.style.backgroundColor = '#eaf4ff'; // 背景色はそのまま
             attributeTitle.style.padding = '10px';
             allMemoSection.appendChild(attributeTitle);
 
@@ -242,15 +290,20 @@ function drawAttributeGroupedData(targetElement, dataMap) {
             dataMap.get(attributeKey).forEach(item => {
                 const listItem = document.createElement('li');
                 listItem.style.marginBottom = '15px';
-                listItem.style.padding = '10px';
-                listItem.style.borderLeft = '4px solid #4a90e2';
+
+                // 💡 修正箇所: padding-left を 10px に減らし、全体を左に寄せる
+                listItem.style.padding = '10px 10px 10px 10px';
+
+                // リスト項目の左ボーダーを要点の場合は黄色、それ以外はグレーに設定
+                const itemBorderColor = attributeKey.includes('CORE_INSIGHTS') ? '#ffc107' : '#ccc';
+                listItem.style.borderLeft = `4px solid ${itemBorderColor}`;
                 listItem.style.backgroundColor = '#fff';
                 listItem.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
 
                 // 【表示ロジックの適用】
                 let itemContentHTML = '';
 
-                if (attributeKey === 'CORE_INSIGHTS') {
+                if (attributeKey === 'CORE_INSIGHTS_HIGHLIGHT' || attributeKey === 'CORE_INSIGHTS_LINKED_NOTE') {
                     if (item.type === 'highlight') {
                         // 1.1 ハイライト (定義) - 太字を適用
                         itemContentHTML = `
@@ -275,8 +328,8 @@ function drawAttributeGroupedData(targetElement, dataMap) {
                             </p>
                         `;
                     }
-                } else if (attributeKey === 'OTHER_NOTE') {
-                    // 2. その他のノート
+                } else { // 新しい属性 (DETAIL, QUESTION, REFLECTION, OTHER) と OTHER_NOTE の処理
+                    // 2. その他のノート、または属性付きのノート
                     itemContentHTML = `<strong>・ </strong> ${item.content} <span style="font-size: 0.8em; color: #888;">(P.${item.page})</span>`;
                 }
 
@@ -288,17 +341,4 @@ function drawAttributeGroupedData(targetElement, dataMap) {
     });
 
     targetElement.appendChild(allMemoSection);
-}
-
-/**
- * 分類キーをユーザーフレンドリーな表示名に変換する
- * @param {string} key 分類キー
- * @returns {string} 表示名
- */
-function getAttributeDisplayName(key) {
-    switch (key) {
-        case 'CORE_INSIGHTS': return '要点';
-        case 'OTHER_NOTE': return 'その他のメモ';
-        default: return '未分類';
-    }
 }

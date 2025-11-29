@@ -86,6 +86,7 @@ export function select(n) {
     }
   }
 }
+
 /* ---------- 初期化，イベント登録 ---------- */
 // initFull()，document.addEventListener("mouseup", …)
 function initFull() {
