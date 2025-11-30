@@ -446,7 +446,7 @@ function showNoteTextStylePalette(note) {
     state.textMode = false;
     state.highlightMode = false;
     state.freeHighlightMode = false;
-    
+
     const vc = $("viewerContainer");
     if (vc) vc.style.cursor = "crosshair";
     console.log("ノートをPDFに紐付けする準備完了");
@@ -464,6 +464,8 @@ function showNoteTextStylePalette(note) {
   linkDelBtn.onclick = e => {
     e.stopPropagation();
     note.dataset.linkedText = "";
+    showNoteTextStylePalette(note);
+
     console.log("ノートの紐付けを削除しました:", note.textContent);
     showLinkStatus("紐付け削除完了");
     scheduleSave();
@@ -471,7 +473,47 @@ function showNoteTextStylePalette(note) {
   linkRow.appendChild(linkDelBtn);
   palette.appendChild(linkRow);
 
-  // 5行目：テキストボックス専用の削除ボタン
+  // --------------------------------------------
+  // 💡 5行目：紐付け確認ボタンを新設
+  // --------------------------------------------
+  const confirmRow = document.createElement("div");
+  confirmRow.style.display = "flex";
+  confirmRow.style.gap = "6px";
+  confirmRow.style.marginTop = "6px";
+  confirmRow.style.width = "100%";
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = "🔗 紐付け確認";
+  confirmBtn.title = "紐付けられているPDFテキストを確認";
+  confirmBtn.style.flexGrow = 1;
+  confirmBtn.style.width = "100%";
+  confirmBtn.style.padding = "4px 8px";
+  confirmBtn.style.borderRadius = "4px";
+
+  // 紐付けテキストの存在を確認
+  const hasLinkedText = note.dataset.linkedText && note.dataset.linkedText.trim() !== "";
+
+  // ボタンの状態を制御
+  confirmBtn.disabled = !hasLinkedText;
+  if (hasLinkedText) {
+    confirmBtn.style.backgroundColor = '#4a90e2'; // リンクあり: 青色
+    confirmBtn.style.color = 'white';
+  } else {
+    confirmBtn.style.backgroundColor = '#f0f0f0'; // リンクなし: 灰色
+    confirmBtn.style.color = '#999';
+    confirmBtn.title = "紐付けがありません";
+  }
+
+  confirmBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (hasLinkedText) {
+      alert("🔗 紐付けテキスト:\n\n" + note.dataset.linkedText);
+    }
+  };
+  confirmRow.appendChild(confirmBtn);
+  palette.appendChild(confirmRow);
+
+  // 6行目：テキストボックス専用の削除ボタン
   const delBtn = document.createElement("button");
   delBtn.textContent = "× テキストボックスの削除";
   delBtn.style.color = "white";

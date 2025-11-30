@@ -1,4 +1,4 @@
-// topicView.js - 主要な要点に統合版（ハイライト表示修正済み）
+// topicView.js - 主要な要点に統合版（ハイライト表示修正済み + 最重要トピック機能追加）
 
 /**
  * トピックビューのボタンイベントを設定し、表示/非表示を切り替える
@@ -50,11 +50,11 @@ function getOrCreateTopicViewContainer() {
     // キーボードイベントのデフォルト動作停止と伝播停止
     container.addEventListener('keydown', (event) => {
         const scrollKeys = [
-            'Space',       // スペースキー (32)
-            'ArrowLeft',   // 左矢印キー (37)
-            'ArrowUp',     // 上矢印キー (38)
-            'ArrowRight',  // 右矢印キー (39)
-            'ArrowDown'    // 下矢印キー (40)
+            'Space',       // スペースキー (32)
+            'ArrowLeft',   // 左矢印キー (37)
+            'ArrowUp',     // 上矢印キー (38)
+            'ArrowRight',  // 右矢印キー (39)
+            'ArrowDown'    // 下矢印キー (40)
         ];
 
         // スクロールに関連するキーのイベント伝播のみを停止
@@ -169,8 +169,8 @@ export function renderTopicView(containerElement) {
         let highlightText = el.dataset.text || '';
 
         if (isHighlight && highlightText.trim() === '') {
-             // 矩形ハイライトなど、テキスト情報がない場合は処理をスキップ
-             return; 
+            // 矩形ハイライトなど、テキスト情報がない場合は処理をスキップ
+            return;
         }
 
         const page = parseInt(el.dataset.page, 10); // ページ番号を数値として取得
@@ -207,6 +207,20 @@ export function renderTopicView(containerElement) {
         return 0;
     });
     // ----------------------------
+
+    // --- 【最重要トピックの抽出ロジックの追加】 ---
+    const allText = allMemoData.map(item => {
+        // ノート内容、紐付けテキスト、ハイライトテキストを結合して分析対象にする
+        const content = item.content || '';
+        const linkedText = item.linkedText || '';
+        return content + ' ' + linkedText;
+    }).join(' ');
+
+    const keyTopics = analyzeTextForTopics(allText);
+
+    // 最重要トピックセクションを描画
+    drawKeyTopicSection(topicContent, keyTopics);
+    // --------------------------------------------
 
     // ソートされたデータを attributeGroupedData に再分類
     allMemoData.forEach(item => {
@@ -341,4 +355,98 @@ function drawAttributeGroupedData(targetElement, dataMap) {
     });
 
     targetElement.appendChild(allMemoSection);
+}
+
+/**
+ * テキストからストップワードを除外し、単語の頻度を計算する
+ * @param {string} text 分析対象の全テキスト
+ * @returns {{word: string, count: number}[]} 頻度順にソートされた上位の単語リスト
+ */
+function analyzeTextForTopics(text) {
+    // 💡 日本語のストップワード（助詞、接続詞、一般的な副詞など）の例
+    const japaneseStopWords = new Set([
+        'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
+        'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
+        'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
+        'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
+        'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
+        'p', 'ページ' // ページ番号のPなども除外
+    ]);
+
+    // 1. 前処理: 小文字化、句読点・記号の除去
+    const cleanedText = text
+        .toLowerCase()
+        // ❌ 元のコード: .replace(/[a-z0-9]/g, ' ') で英数字が消えていたため、「Trace」がカウントされなかった。
+        // ✅ 修正後: この行を削除し、英数字を日本語と同じくトピックとして残します。
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ") // 句読点・記号をスペースに置換
+        .replace(/\s+/g, ' ') // 複数のスペースを1つに
+        .trim();
+
+    // 2. トークン化
+    // スペース区切りで単語を区切る（日本語の簡易的なトークン化）
+    const words = cleanedText.split(' ').filter(word => word.length > 1); // 1文字以下の単語は無視
+
+    // 3. 頻度計算とストップワード除去
+    const wordCounts = new Map();
+    words.forEach(word => {
+        // ストップワードでなく、空白でない単語のみカウント
+        if (!japaneseStopWords.has(word) && word.trim() !== '') {
+            wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
+        }
+    });
+
+    // 4. ソートして上位10件を抽出
+    const sortedWords = Array.from(wordCounts.entries())
+        .filter(a => a[1] >= 2)
+        .sort((a, b) => b[1] - a[1]) // 頻度で降順ソート
+        .slice(0, 10) // 上位10個に限定
+        .map(([word, count]) => ({ word, count }));
+
+    return sortedWords;
+}
+
+/**
+ * 最重要トピックのセクションを描画する
+ * @param {HTMLElement} targetElement 描画対象のコンテナ
+ * @param {{word: string, count: number}[]} keyTopics 最重要トピックのリスト
+ */
+function drawKeyTopicSection(targetElement, keyTopics) {
+    if (keyTopics.length === 0) return;
+
+    const keyTopicSection = document.createElement('section');
+    keyTopicSection.style.marginBottom = '40px';
+    keyTopicSection.style.padding = '20px';
+    keyTopicSection.style.backgroundColor = '#fff0e0'; // 重要なセクションの背景色
+    keyTopicSection.style.borderRadius = '8px';
+    keyTopicSection.style.border = '2px solid #ffcc80';
+
+    const sectionTitle = document.createElement('h2');
+    sectionTitle.textContent = '🔥 最重要トピック';
+    sectionTitle.style.borderBottom = '3px solid #ffaa00';
+    sectionTitle.style.paddingBottom = '5px';
+    sectionTitle.style.marginBottom = '15px';
+    sectionTitle.style.color = '#d05a00';
+    keyTopicSection.appendChild(sectionTitle);
+
+    const topicList = document.createElement('div');
+    topicList.style.display = 'flex';
+    topicList.style.flexWrap = 'wrap';
+    topicList.style.gap = '10px';
+
+    keyTopics.forEach(topic => {
+        const topicChip = document.createElement('span');
+        topicChip.textContent = `${topic.word} (${topic.count})`;
+        topicChip.style.backgroundColor = '#ffcc80';
+        topicChip.style.color = '#333';
+        topicChip.style.padding = '5px 10px';
+        topicChip.style.borderRadius = '15px';
+        topicChip.style.fontWeight = 'bold';
+        topicChip.style.fontSize = '1.1em';
+        topicList.appendChild(topicChip);
+    });
+
+    keyTopicSection.appendChild(topicList);
+
+    // ノートセクションの前に挿入 (メインタイトルと topicContent の間に挿入される)
+    targetElement.insertBefore(keyTopicSection, targetElement.firstChild);
 }
