@@ -1,4 +1,26 @@
-// topicView.js - 主要な要点に統合版（ハイライト表示修正済み + 最重要トピック機能追加）
+// 最重要トピック対応の処理を追加
+
+const JAPANESE_STOP_WORDS = new Set([
+    'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
+    'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
+    'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
+    'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
+    'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
+    'p', 'ページ'
+]);
+
+const ENGLISH_STOP_WORDS = new Set([
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 'if',
+    'be', 'not', 'of', 'in', 'on', 'at', 'to', 'from', 'by', 'with',
+    'it', 'its', 'this', 'that', 'we', 'our', 'us', 'you', 'your', 'they', 'their',
+    'can', 'will', 'would', 'should', 'have', 'has', 'had', 'do', 'does', 'did',
+    'as', 'for', 'about', 'out', 'up', 'down', 'only', 'all', 'any', 'some',
+    'p'
+]);
+
+// ==============================================================================
+// トピックビューのボタンイベントを設定し、表示/非表示を切り替える
+// ==============================================================================
 
 /**
  * トピックビューのボタンイベントを設定し、表示/非表示を切り替える
@@ -234,7 +256,6 @@ export function renderTopicView(containerElement) {
     drawAttributeGroupedData(topicContent, attributeGroupedData);
 }
 
-
 /**
  * 分類キーをユーザーフレンドリーな表示名に変換し、色を返す
  * @param {string} key 分類キー
@@ -259,7 +280,6 @@ function getAttributeDetails(key) {
         default: return { name: '未分類', color: '#bdbdbd' };
     }
 }
-
 
 /**
  * 分類されたデータを構造化して描画する (トピック見出しなし)
@@ -363,41 +383,43 @@ function drawAttributeGroupedData(targetElement, dataMap) {
  * @returns {{word: string, count: number}[]} 頻度順にソートされた上位の単語リスト
  */
 function analyzeTextForTopics(text) {
-    // 💡 日本語のストップワード（助詞、接続詞、一般的な副詞など）の例
-    const japaneseStopWords = new Set([
-        'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
-        'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
-        'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
-        'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
-        'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
-        'p', 'ページ' // ページ番号のPなども除外
-    ]);
+
+    // --- 【言語判定ロジック】 ---
+    // ひらがな・カタカナ・漢字の文字数をカウント
+    const japaneseCharCount = (text.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/g) || []).length;
+    const totalCharCount = text.length;
+
+    // 全体の文字数に対して日本語文字が一定割合（例：20%）以上であれば日本語と見なす
+    const isJapanese = totalCharCount > 0 && (japaneseCharCount / totalCharCount) > 0.20;
+
+    const stopWords = isJapanese ? JAPANESE_STOP_WORDS : ENGLISH_STOP_WORDS;
+    // ----------------------------
 
     // 1. 前処理: 小文字化、句読点・記号の除去
     const cleanedText = text
         .toLowerCase()
-        // ❌ 元のコード: .replace(/[a-z0-9]/g, ' ') で英数字が消えていたため、「Trace」がカウントされなかった。
-        // ✅ 修正後: この行を削除し、英数字を日本語と同じくトピックとして残します。
-        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ") // 句読点・記号をスペースに置換
-        .replace(/\s+/g, ' ') // 複数のスペースを1つに
+        // 句読点・記号をスペースに置換
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+        // 複数のスペースを1つに
+        .replace(/\s+/g, ' ')
         .trim();
 
     // 2. トークン化
-    // スペース区切りで単語を区切る（日本語の簡易的なトークン化）
+    // スペース区切りで単語を区切る
     const words = cleanedText.split(' ').filter(word => word.length > 1); // 1文字以下の単語は無視
 
     // 3. 頻度計算とストップワード除去
     const wordCounts = new Map();
     words.forEach(word => {
-        // ストップワードでなく、空白でない単語のみカウント
-        if (!japaneseStopWords.has(word) && word.trim() !== '') {
+        // 判定されたストップワードリストを使用
+        if (!stopWords.has(word) && word.trim() !== '') {
             wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
         }
     });
 
     // 4. ソートして上位10件を抽出
     const sortedWords = Array.from(wordCounts.entries())
-        .filter(a => a[1] >= 2)
+        .filter(a => a[1] >= 2) // 2回以上の出現に限定
         .sort((a, b) => b[1] - a[1]) // 頻度で降順ソート
         .slice(0, 10) // 上位10個に限定
         .map(([word, count]) => ({ word, count }));
