@@ -42,6 +42,7 @@ function saveNotesToServer() {
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
       linkedText: note.dataset.linkedText || "",
+      linkedNoteId: note.dataset.linkedNoteId || "",
       attribute: note.dataset.attribute || ""
     };
   });
@@ -313,8 +314,10 @@ CREATE TABLE notes (
   color VARCHAR(20),
   fontSize VARCHAR(10),
   linkedText TEXT,
+  linkedNoteId VARCHAR(36),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  attribute VARCHER(50)
 );
 
 CREATE TABLE highlights (

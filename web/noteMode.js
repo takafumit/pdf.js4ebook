@@ -3,7 +3,6 @@ import { scheduleSave, showLinkStatus } from './annotationManager.js';
 import { saveNotesToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
 
-
 /* ---------- テキストボックス関連 ---------- */
 // 1. テキストボックス生成，編集
 // addNote(e), commit(note), enableDrag(note), enableResize(note)
@@ -12,7 +11,7 @@ function addNote(e) {
   note.className = "note";
   note.contentEditable = "true";
   note.textContent = "ノート";
-  note.dataset.id = `note-${Date.now()}`;
+  note.dataset.id = `note-${Date.now()}`; // ⭐️ ノートIDを付与
 
   const noteWidth = 100, noteHeight = 50;
   note.style.width = noteWidth + "px";
@@ -24,6 +23,7 @@ function addNote(e) {
   note.dataset.color = "black";
   note.dataset.bubbleAttached = "false";
   note.dataset.attribute = "";
+  note.dataset.linkedNoteId = ""; // ⭐️ ノート間紐付け用データを初期化
 
   const viewerContainer = $("viewerContainer");
   const viewerRect = viewerContainer.getBoundingClientRect();
@@ -170,10 +170,6 @@ function enableDrag(note) {
       }
     }
 
-    // PDF座標の再計算 (更新された newPageNum を使用)
-    // const { x, y, w, h } = domToPdf(note, newPageNum);
-    // note.dataset.x = x; note.dataset.y = y; note.dataset.w = w; note.dataset.h = h;
-
     // PDF座標の再計算 (domToPdfは現在のDOMサイズと位置を使ってdatasetを更新します)
     const { x, y, w, h } = domToPdf(note, newPageNum);
     note.dataset.x = x;
@@ -242,11 +238,6 @@ function enableResize(note) {
     document.onmousemove = document.onmouseup = null;
 
     const pageNum = parseInt(note.dataset.page);
-    // const { w, h } = domToPdf(note, pageNum);
-
-    // note.dataset.w = w;
-    // note.dataset.h = h;
-
     const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNum - 1);
     const vp = pageView.viewport;
 
@@ -296,16 +287,78 @@ function saveAllNotes() {
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
       linkedText: note.dataset.linkedText || "",
-      attribute: note.dataset.attribute || ""
+      attribute: note.dataset.attribute || "",
+      linkedNoteId: note.dataset.linkedNoteId || "" // ⭐️ ノート間紐付けIDを保存
     });
   });
   localStorage.setItem(TEXT_KEY, JSON.stringify({ notes }));
 
   // if (notes?.length) {
-  //   console.log(`📝 現在のテキストボックス一覧 (${notes.length}件):`);
-  //   console.table(notes);
+  // 	 console.log(`📝 現在のテキストボックス一覧 (${notes.length}件):`);
+  // 	 console.table(notes);
   // }
   saveNotesToServer(notes);
+}
+
+// 4. ⭐️【追加】紐付け中の線を表示するためのヘルパー関数 ⭐️
+
+// SVG要素を作成する関数
+function createLinkSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = "linkLineSVG";
+  svg.style.position = "absolute";
+  svg.style.top = "0";
+  svg.style.left = "0";
+  svg.style.width = "100%";
+  svg.style.height = "100%";
+  svg.style.pointerEvents = "none"; // マウスイベントを透過させる
+  svg.style.zIndex = "5000"; // 他の要素の上に表示
+  return svg;
+}
+
+// 線を描画・更新する関数
+function updateLinkLine(startNote, endPoint) {
+  const svg = state.linkSVG;
+  if (!svg || !startNote) return;
+
+  const startRect = startNote.getBoundingClientRect();
+  const startX = startRect.left + startRect.width / 2;
+  const startY = startRect.top + startRect.height / 2;
+
+  let endX, endY;
+  if (endPoint) {
+    // 終点がマウスカーソルの場合
+    endX = endPoint.x;
+    endY = endPoint.y;
+  } else {
+    // 終点が未確定の場合（マウスイベントで常に更新されることを期待）
+    return;
+  }
+
+  // 既存のline要素を取得または作成
+  let line = svg.querySelector("#activeLinkLine");
+  if (!line) {
+    line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.id = "activeLinkLine";
+    line.setAttribute("stroke", "gray");
+    line.setAttribute("stroke-width", "2");
+    svg.appendChild(line);
+  }
+
+  // 座標を設定
+  line.setAttribute("x1", startX);
+  line.setAttribute("y1", startY);
+  line.setAttribute("x2", endX);
+  line.setAttribute("y2", endY);
+}
+
+// SVGを削除する関数
+function removeLinkSVG() {
+  if (state.linkSVG) {
+    state.linkSVG.remove();
+    state.linkSVG = null;
+    state.linkStartNote = null;
+  }
 }
 
 // 3. テキストボックス表示補助
@@ -428,7 +481,7 @@ function showNoteTextStylePalette(note) {
 
   const linkBtn = document.createElement("button");
   linkBtn.textContent = "紐付け追加";
-  linkBtn.title = "PDFに紐付け";
+  linkBtn.title = "PDF/別のテキストボックスに紐付け";
   linkBtn.style.flexGrow = 1;
   linkBtn.style.width = "50%";
   linkBtn.onclick = () => {
@@ -447,10 +500,16 @@ function showNoteTextStylePalette(note) {
     state.highlightMode = false;
     state.freeHighlightMode = false;
 
+    // ⭐️【修正・追加】紐付け開始時に線のSVGを準備 ⭐️
+    const svg = createLinkSVG();
+    document.body.appendChild(svg);
+    state.linkSVG = svg;
+    state.linkStartNote = note;
+
     const vc = $("viewerContainer");
     if (vc) vc.style.cursor = "crosshair";
-    console.log("ノートをPDFに紐付けする準備完了");
-    showLinkStatus("紐付け開始");
+    console.log("ノートをPDFまたは別のノートに紐付けする準備完了");
+    showLinkStatus("紐付け開始: PDFテキストを選択するか、別のノートをクリック");
     setHighlightSelectable(true);
   };
   linkRow.appendChild(linkBtn);
@@ -458,12 +517,14 @@ function showNoteTextStylePalette(note) {
   // 紐付け削除ボタン
   const linkDelBtn = document.createElement("button");
   linkDelBtn.textContent = "紐付け削除";
-  linkDelBtn.title = "PDFの紐付け削除";
+  linkDelBtn.title = "PDF/ノートの紐付けを削除";
   linkDelBtn.style.flexGrow = 1;
   linkDelBtn.style.width = "50%";
   linkDelBtn.onclick = e => {
     e.stopPropagation();
     note.dataset.linkedText = "";
+    note.dataset.linkedNoteId = ""; // ⭐️ ノート間紐付けも削除
+
     showNoteTextStylePalette(note);
 
     console.log("ノートの紐付けを削除しました:", note.textContent);
@@ -484,20 +545,22 @@ function showNoteTextStylePalette(note) {
 
   const confirmBtn = document.createElement("button");
   confirmBtn.textContent = "🔗 紐付け確認";
-  confirmBtn.title = "紐付けられているPDFテキストを確認";
+  confirmBtn.title = "紐付けられているPDFテキストまたはノートIDを確認";
   confirmBtn.style.flexGrow = 1;
   confirmBtn.style.width = "100%";
   confirmBtn.style.padding = "4px 8px";
   confirmBtn.style.borderRadius = "4px";
 
-  // 紐付けテキストの存在を確認
+  // 紐付けテキストまたはノートIDの存在を確認
   const hasLinkedText = note.dataset.linkedText && note.dataset.linkedText.trim() !== "";
+  const hasLinkedNote = note.dataset.linkedNoteId && note.dataset.linkedNoteId.trim() !== ""; // ⭐️ ノート間紐付けの確認
 
   // ボタンの状態を制御
-  confirmBtn.disabled = !hasLinkedText;
-  if (hasLinkedText) {
+  confirmBtn.disabled = !hasLinkedText && !hasLinkedNote; // どちらかの紐付けがあれば有効
+  if (hasLinkedText || hasLinkedNote) {
     confirmBtn.style.backgroundColor = '#4a90e2'; // リンクあり: 青色
     confirmBtn.style.color = 'white';
+    confirmBtn.title = "紐付けを確認";
   } else {
     confirmBtn.style.backgroundColor = '#f0f0f0'; // リンクなし: 灰色
     confirmBtn.style.color = '#999';
@@ -506,8 +569,15 @@ function showNoteTextStylePalette(note) {
 
   confirmBtn.onclick = (e) => {
     e.stopPropagation();
+    let message = "";
     if (hasLinkedText) {
-      alert("🔗 紐付けテキスト:\n\n" + note.dataset.linkedText);
+      message += "🔗 PDF紐付けテキスト:\n" + note.dataset.linkedText + "\n\n";
+    }
+    if (hasLinkedNote) {
+      message += "🔗 ノート間紐付けID:\n" + note.dataset.linkedNoteId + "\n";
+    }
+    if (message) {
+      alert(message.trim());
     }
   };
   confirmRow.appendChild(confirmBtn);
@@ -527,6 +597,7 @@ function showNoteTextStylePalette(note) {
     doOp(OP.delete(note, note.parentElement));
     select(null);
     palette.remove();
+    removeLinkSVG();
   };
   palette.appendChild(delBtn);
 
@@ -551,4 +622,6 @@ export {
   saveAllNotes,
   showNoteTextStylePalette,
   hideNoteColorPalette,
+  updateLinkLine,
+  removeLinkSVG,
 }

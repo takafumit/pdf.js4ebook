@@ -8,7 +8,8 @@ import { openSearchPanel } from './searchManager.js';
 import { showSidebar } from './sidebarManager.js';
 import { toggleBubbleMode, updateBubblePositions } from './noteBubble.js';
 import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, saveAllHighlights, createFreeHighlight } from './highlightMode.js';
-import { addNote, commit, saveAllNotes, hideNoteColorPalette } from './noteMode.js';
+// ⭐️【修正】noteMode.js から必要な関数をインポート
+import { addNote, commit, saveAllNotes as saveAllNotesToMode, hideNoteColorPalette, updateLinkLine, removeLinkSVG } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './annotationManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
 import { freehandMode } from './freehandMode.js';
@@ -28,7 +29,10 @@ export const state = {
   selected: null,
   undoStack: [],
   redoStack: [],
-  linkingNote: null
+  linkingNote: null,
+  // ⭐️【追加】紐付け中の線の管理 ⭐️
+  linkSVG: null,       
+  linkStartNote: null
 };
 
 export const HANDLE = 12;
@@ -86,6 +90,12 @@ export function select(n) {
     }
   }
 }
+
+// ⚠️ noteMode.js の saveAllNotes との整合性を取るためのラッパー
+export function saveAllNotes() {
+    saveAllNotesToMode();
+}
+
 
 /* ---------- 初期化，イベント登録 ---------- */
 // initFull()，document.addEventListener("mouseup", …)
@@ -336,8 +346,8 @@ if (viewerContainer) {
   new ResizeObserver(() => updateNotePositions()).observe(viewerContainer);
 }
 
-/* ---------- ハイライト選択範囲確認 & ノート紐付け ---------- */
-document.addEventListener("mouseup", () => {
+/* ---------- ⭐️【修正】ハイライト選択範囲確認 & ノート紐付け (マウスアップ) ⭐️ ---------- */
+document.addEventListener("mouseup", (event) => { // event パラメータを追加
   const selection = window.getSelection();
   const selectedText = selection.toString().trim();
 
@@ -348,25 +358,77 @@ document.addEventListener("mouseup", () => {
   }
 
   // ノート紐付け処理
-  if (state.linkingNote && selectedText) {
-    // 紐付けテキストを保存
-    state.linkingNote.dataset.linkedText = selectedText;
+  if (state.linkingNote) {
+    let target = null;
+    let linkedContent = "";
+    let linkType = ""; 
+    let targetNoteId = "";
 
-    console.log("ノートに紐付け:", selectedText);
-    state.linkingNote = null;
+    // 1. PDFのテキスト選択による紐付け
+    if (selectedText) {
+      target = selection; 
+      linkedContent = selectedText;
+      linkType = "pdf";
+    }
+    // 2. ⭐️【追加】他のテキストボックスへのクリックによる紐付け ⭐️
+    else {
+      const clickedElement = event.target;
+      const startNote = state.linkingNote;
 
-    // マウスカーソルを戻す
-    const vc = $("viewerContainer");
-    if (vc) vc.style.cursor = "default";
+      if (
+        clickedElement.classList.contains("note") &&
+        clickedElement !== startNote
+      ) {
+        target = clickedElement; 
+        targetNoteId = clickedElement.dataset.id;
+        linkedContent = "ノート: " + targetNoteId; 
+        linkType = "note";
+      }
+    }
 
-    // ハイライト操作を再び有効化
-    setHighlightSelectable(false);
+    if (target) {
+      // 紐付けが成功した場合
+      const startNote = state.linkingNote;
+      
+      if (linkType === "pdf") {
+        startNote.dataset.linkedText = linkedContent;
+        startNote.dataset.linkedNoteId = ""; // ノート間紐付けIDをクリア
+      } else if (linkType === "note") {
+        startNote.dataset.linkedText = "";
+        startNote.dataset.linkedNoteId = targetNoteId; // リンク先のノートIDを保存
+      }
 
-    // 選択解除 & 保存
-    selection.removeAllRanges();
-    saveAllNotes();
+      console.log(`ノートに紐付け (${linkType}):`, linkedContent);
+      const displayText = linkType === 'note' ? `別のテキストボックス (ID: ${targetNoteId})` : `「${linkedContent}」`;
+      showLinkStatus(`${displayText}に紐付け`);
 
-    showLinkStatus(`「${selectedText}」をテキストボックスに紐付け`);
+      // 共通の後処理
+      state.linkingNote = null;
+      const vc = $("viewerContainer");
+      if (vc) vc.style.cursor = "default";
+      setHighlightSelectable(false);
+      selection.removeAllRanges();
+      saveAllNotes();
+      removeLinkSVG(); // 紐付け完了時に線とSVGを削除
+    } else if (state.linkingNote) {
+      // 紐付け対象が見つからなかった場合（キャンセル）
+      console.log("紐付けをキャンセルしました");
+      showLinkStatus("紐付けをキャンセル");
+
+      // 共通の後処理
+      state.linkingNote = null;
+      const vc = $("viewerContainer");
+      if (vc) vc.style.cursor = "default";
+      setHighlightSelectable(false);
+      removeLinkSVG(); // 紐付けキャンセル時に線とSVGを削除
+    }
+  }
+});
+
+/* ---------- ⭐️【追加】マウス移動イベント: 紐付け中の線を表示 ⭐️ ---------- */
+document.addEventListener("mousemove", (e) => {
+  if (state.linkingNote && state.linkSVG) {
+    updateLinkLine(state.linkStartNote, { x: e.clientX, y: e.clientY });
   }
 });
 
@@ -454,11 +516,5 @@ document.getElementById("findButton").addEventListener("click", () => {
     initFull();
     PDFViewerApplication.eventBus.on("pagesloaded", () => {
       loadAllFromServer();
-      // // 🚨 修正点: restoreFreehands を setTimeout で遅延させる 🚨
-      // setTimeout(() => {
-      //   console.log("restoreFreehands start (Delayed)");
-      //   restoreFreehands();
-      //   console.log("restoreFreehands end (Delayed)");
-      // }, 200); // 100ミリ秒の遅延（環境に応じて調整可能）
     });
   });
