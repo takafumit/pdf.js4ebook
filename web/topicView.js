@@ -201,10 +201,13 @@ export function renderTopicView(containerElement) {
             content = highlightText;
         }
 
+        const keypointText = hasLinkedText ? linkedText : content;
+
         // データの集約
         allMemoData.push({
             content,
             linkedText,
+            keypointText,
             page,
             type: isHighlight ? 'highlight' : 'note',
             isLinked: hasLinkedText,
@@ -244,12 +247,19 @@ export function renderTopicView(containerElement) {
     drawKeyTopicSection(topicContent, keyTopics);
     // --------------------------------------------
 
-    // ソートされたデータを attributeGroupedData に再分類
+    // ソートされたデータを attributeGroupedData に再分類する部分
     allMemoData.forEach(item => {
-        if (!attributeGroupedData.has(item.attributeKey)) {
-            attributeGroupedData.set(item.attributeKey, []);
+        let finalAttributeKey = item.attributeKey;
+
+        // ⭐️ 属性に関わらず、紐付けされたノートは要点グループに分類する ⭐️
+        if (item.isLinked && item.type === 'note') {
+            finalAttributeKey = 'CORE_INSIGHTS_LINKED_NOTE';
         }
-        attributeGroupedData.get(item.attributeKey).push(item);
+
+        if (!attributeGroupedData.has(finalAttributeKey)) {
+            attributeGroupedData.set(finalAttributeKey, []);
+        }
+        attributeGroupedData.get(finalAttributeKey).push(item);
     });
 
     // 抽出・分類したデータを描画

@@ -31,7 +31,7 @@ export const state = {
   redoStack: [],
   linkingNote: null,
   // ⭐️【追加】紐付け中の線の管理 ⭐️
-  linkSVG: null,       
+  linkSVG: null,
   linkStartNote: null
 };
 
@@ -93,7 +93,7 @@ export function select(n) {
 
 // ⚠️ noteMode.js の saveAllNotes との整合性を取るためのラッパー
 export function saveAllNotes() {
-    saveAllNotesToMode();
+  saveAllNotesToMode();
 }
 
 
@@ -361,16 +361,16 @@ document.addEventListener("mouseup", (event) => { // event パラメータを追
   if (state.linkingNote) {
     let target = null;
     let linkedContent = "";
-    let linkType = ""; 
+    let linkType = "";
     let targetNoteId = "";
 
     // 1. PDFのテキスト選択による紐付け
     if (selectedText) {
-      target = selection; 
+      target = selection;
       linkedContent = selectedText;
       linkType = "pdf";
     }
-    // 2. ⭐️【追加】他のテキストボックスへのクリックによる紐付け ⭐️
+    // 2. 他のテキストボックスへのクリックによる紐付け (noteMode.js のロジックと重複を避けるため、ここではノート間紐付けを処理しない)
     else {
       const clickedElement = event.target;
       const startNote = state.linkingNote;
@@ -379,9 +379,9 @@ document.addEventListener("mouseup", (event) => { // event パラメータを追
         clickedElement.classList.contains("note") &&
         clickedElement !== startNote
       ) {
-        target = clickedElement; 
+        target = clickedElement;
         targetNoteId = clickedElement.dataset.id;
-        linkedContent = "ノート: " + targetNoteId; 
+        linkedContent = "ノート: " + targetNoteId;
         linkType = "note";
       }
     }
@@ -389,12 +389,18 @@ document.addEventListener("mouseup", (event) => { // event パラメータを追
     if (target) {
       // 紐付けが成功した場合
       const startNote = state.linkingNote;
-      
+
       if (linkType === "pdf") {
+        // 💡 修正: 既存の linkedNoteId の値を維持する
+        const existingNoteId = startNote.dataset.linkedNoteId || "";
+
         startNote.dataset.linkedText = linkedContent;
-        startNote.dataset.linkedNoteId = ""; // ノート間紐付けIDをクリア
+        startNote.dataset.linkedNoteId = existingNoteId; // ノート間紐付けIDを維持
       } else if (linkType === "note") {
-        startNote.dataset.linkedText = "";
+        // 💡 修正: 既存の linkedText の値を維持する
+        const existingLinkedText = startNote.dataset.linkedText || "";
+
+        startNote.dataset.linkedText = existingLinkedText; // PDF紐付けテキストを維持
         startNote.dataset.linkedNoteId = targetNoteId; // リンク先のノートIDを保存
       }
 
