@@ -8,8 +8,7 @@ import { openSearchPanel } from './searchManager.js';
 import { showSidebar } from './sidebarManager.js';
 import { toggleBubbleMode, updateBubblePositions } from './noteBubble.js';
 import { addHighlight, showHighlightColorPalette, hideHighlightColorPalette, saveAllHighlights, createFreeHighlight } from './highlightMode.js';
-// ⭐️【修正】noteMode.js から必要な関数をインポート
-import { addNote, commit, saveAllNotes as saveAllNotesToMode, hideNoteColorPalette, updateLinkLine, removeLinkSVG } from './noteMode.js';
+import { addNote, commit, saveAllNotes as saveAllNotesToMode, hideNoteColorPalette, updateLinkLine, removeLinkSVG, cleanupLinksAfterDeletion } from './noteMode.js';
 import { updateNotePositions, createDeleteButton, showLinkStatus } from './annotationManager.js';
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
 import { freehandMode } from './freehandMode.js';
@@ -265,6 +264,12 @@ function initFull() {
 
     if (e.key === "Delete" && state.selected) {
       if (state.selected.classList.contains("note")) {
+        // ⭐️ 修正点: ノート削除前にクリーンアップを実行
+        const deletedId = state.selected.dataset.id;
+        if (deletedId) {
+          cleanupLinksAfterDeletion(deletedId);
+        }
+        // ------------------------------------
         doOp(OP.delete(state.selected, state.selected.parentElement));
         select(null);
         const palette = document.getElementById("noteTextStylePalette");
@@ -402,6 +407,7 @@ document.addEventListener("mouseup", (event) => { // event パラメータを追
 
         startNote.dataset.linkedText = existingLinkedText; // PDF紐付けテキストを維持
         startNote.dataset.linkedNoteId = targetNoteId; // リンク先のノートIDを保存
+
       }
 
       console.log(`ノートに紐付け (${linkType}):`, linkedContent);

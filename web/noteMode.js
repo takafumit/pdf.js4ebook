@@ -24,6 +24,7 @@ function addNote(e) {
   note.dataset.bubbleAttached = "false";
   note.dataset.attribute = "";
   note.dataset.linkedNoteId = ""; // ⭐️ ノート間紐付け用データを初期化
+  // 🔴 削除: note.dataset.parentNoteId = ""; 
 
   const viewerContainer = $("viewerContainer");
   const viewerRect = viewerContainer.getBoundingClientRect();
@@ -288,19 +289,65 @@ function saveAllNotes() {
       color: note.dataset.color || "black",
       linkedText: note.dataset.linkedText || "",
       attribute: note.dataset.attribute || "",
-      linkedNoteId: note.dataset.linkedNoteId || "" // ⭐️ ノート間紐付けIDを保存
+      linkedNoteId: note.dataset.linkedNoteId || "", // ⭐️ ノート間紐付けIDを保存
+      // 🔴 削除:       parentNoteId: note.dataset.parentNoteId || "" 
     });
   });
   localStorage.setItem(TEXT_KEY, JSON.stringify({ notes }));
 
   // if (notes?.length) {
-  // 	 console.log(`📝 現在のテキストボックス一覧 (${notes.length}件):`);
-  // 	 console.table(notes);
+  //   console.log(`📝 現在のテキストボックス一覧 (${notes.length}件):`);
+  //   console.table(notes);
   // }
   saveNotesToServer(notes);
 }
 
-// 4. ⭐️【追加】紐付け中の線を表示するためのヘルパー関数 ⭐️
+// ⭐️【追加】特定のIDを持つノートDOM要素を取得するヘルパー関数 ⭐️
+/**
+ * 特定の data-id を持つノート要素（DOM）を取得する
+ * @param {string} itemId 検索したいノートの一意のID
+ * @returns {HTMLElement | null} ノート要素、または見つからなかった場合は null
+ */
+function getNoteElementById(itemId) {
+  // 属性セレクタを使用して、data-idが一致する要素を探す
+  const selector = `.note[data-id="${itemId}"]`;
+  return document.querySelector(selector);
+}
+
+
+// ⭐️【修正】ノート削除時に他のノートの紐付けをクリーンアップする関数 ⭐️
+/**
+ * 削除されたノートIDを紐付け先として参照している他のノートのDOM属性をクリーンアップする
+ *
+ * 別のノートが、削除されたノートを linkedNoteId (紐付け先) として参照している場合のみクリアします。
+ * @param {string} deletedNoteId 削除されたノートのID
+ */
+function cleanupLinksAfterDeletion(deletedNoteId) {
+  if (!deletedNoteId) return;
+
+  // 1. 削除されたノートを linkedNoteId (ノート間紐付け先) として参照しているノートをクリーンアップ
+  const linkedSelector = `[data-linked-note-id="${deletedNoteId}"]`;
+  document.querySelectorAll(linkedSelector).forEach(el => {
+    el.dataset.linkedNoteId = "";
+    // PDF紐付けとノート間紐付けの両方がなくなったらリンクステータスもクリアする
+    if (!el.dataset.linkedText) {
+      showLinkStatus(`ノート ${el.dataset.id} の紐付けを解除しました。`);
+    }
+  });
+
+  // 🔴 削除: parentNoteId のクリーンアップロジックを削除
+  //   // 2. 削除されたノートを parentNoteId (トピックビュー階層の親) として参照しているノートをクリーンアップ
+  //   const parentSelector = `[data-parent-note-id="${deletedNoteId}"]`;
+  //   document.querySelectorAll(parentSelector).forEach(el => {
+  //     el.dataset.parentNoteId = "";
+  //   });
+
+  // データが変更されたので保存をスケジュール
+  scheduleSave();
+}
+
+
+// 4. ⭐️【既存】紐付け中の線を表示するためのヘルパー関数 ⭐️
 
 // SVG要素を作成する関数
 function createLinkSVG() {
@@ -500,7 +547,7 @@ function showNoteTextStylePalette(note) {
     state.highlightMode = false;
     state.freeHighlightMode = false;
 
-    // ⭐️【修正・追加】紐付け開始時に線のSVGを準備 ⭐️
+    // ⭐️ 紐付け開始時に線のSVGを準備 ⭐️
     const svg = createLinkSVG();
     document.body.appendChild(svg);
     state.linkSVG = svg;
@@ -523,7 +570,18 @@ function showNoteTextStylePalette(note) {
   linkDelBtn.onclick = e => {
     e.stopPropagation();
     note.dataset.linkedText = "";
-    note.dataset.linkedNoteId = ""; // ⭐️ ノート間紐付けも削除
+
+    // ⭐️ ノート間紐付け削除処理 ⭐️
+    const oldLinkedNoteId = note.dataset.linkedNoteId;
+    if (oldLinkedNoteId) {
+      // 🔴 削除: 紐付け先ノートの親ID参照をクリア（トピックビュー階層用）
+      //       const targetNote = getNoteElementById(oldLinkedNoteId);
+      //       if (targetNote) {
+      //         targetNote.dataset.parentNoteId = "";
+      //       }
+    }
+    note.dataset.linkedNoteId = "";
+    // ---------------------------
 
     showNoteTextStylePalette(note);
 
@@ -594,10 +652,22 @@ function showNoteTextStylePalette(note) {
 
   delBtn.onclick = (e) => {
     e.stopPropagation();
+
+    // ⭐️ 修正点: 削除前に紐付けクリーンアップ処理を実行 ⭐️
+    const deletedId = note.dataset.id;
+    if (deletedId) {
+      // 削除対象のIDを参照していた他のノートから参照を解除する
+      cleanupLinksAfterDeletion(deletedId);
+    }
+    // -----------------------------------------------------
+
     doOp(OP.delete(note, note.parentElement));
     select(null);
     palette.remove();
     removeLinkSVG();
+
+    // 削除によりデータが変わるので保存をスケジュール
+    scheduleSave();
   };
   palette.appendChild(delBtn);
 
@@ -624,4 +694,6 @@ export {
   hideNoteColorPalette,
   updateLinkLine,
   removeLinkSVG,
+  getNoteElementById,
+  cleanupLinksAfterDeletion,
 }
