@@ -11,7 +11,7 @@ function addNote(e) {
   note.className = "note";
   note.contentEditable = "true";
   note.textContent = "ノート";
-  note.dataset.id = `note-${Date.now()}`; // ⭐️ ノートIDを付与
+  note.dataset.id = `note-${Date.now()}`;
 
   const noteWidth = 100, noteHeight = 50;
   note.style.width = noteWidth + "px";
@@ -23,7 +23,7 @@ function addNote(e) {
   note.dataset.color = "black";
   note.dataset.bubbleAttached = "false";
   note.dataset.attribute = "";
-  note.dataset.linkedNoteId = ""; // ⭐️ ノート間紐付け用データを初期化
+  note.dataset.linkedNoteId = "";
   // 🔴 削除: note.dataset.parentNoteId = ""; 
 
   const viewerContainer = $("viewerContainer");
@@ -289,8 +289,7 @@ function saveAllNotes() {
       color: note.dataset.color || "black",
       linkedText: note.dataset.linkedText || "",
       attribute: note.dataset.attribute || "",
-      linkedNoteId: note.dataset.linkedNoteId || "", // ⭐️ ノート間紐付けIDを保存
-      // 🔴 削除:       parentNoteId: note.dataset.parentNoteId || "" 
+      linkedNoteId: note.dataset.linkedNoteId || "",
     });
   });
   localStorage.setItem(TEXT_KEY, JSON.stringify({ notes }));
@@ -314,35 +313,25 @@ function getNoteElementById(itemId) {
   return document.querySelector(selector);
 }
 
-
-// ⭐️【修正】ノート削除時に他のノートの紐付けをクリーンアップする関数 ⭐️
+// ⭐️【修正】テキストボックス削除時に他のテキストボックスの紐付けをクリーンアップする関数 ⭐️
 /**
- * 削除されたノートIDを紐付け先として参照している他のノートのDOM属性をクリーンアップする
+ * 削除されたテキストボックスのIDを紐付け先として参照している他のテキストボックスのDOM属性をクリーンアップする
  *
- * 別のノートが、削除されたノートを linkedNoteId (紐付け先) として参照している場合のみクリアします。
- * @param {string} deletedNoteId 削除されたノートのID
+ * 別のテキストボックスが、削除されたテキストボックスを linkedNoteId (紐付け先) として参照している場合のみクリアします。
+ * @param {string} deletedNoteId 削除されたテキストボックスのID
  */
 function cleanupLinksAfterDeletion(deletedNoteId) {
   if (!deletedNoteId) return;
 
-  // 1. 削除されたノートを linkedNoteId (ノート間紐付け先) として参照しているノートをクリーンアップ
+  // 1. 削除されたテキストボックスを linkedNoteId (テキストボックス間紐付け先) として参照しているテキストボックスをクリーンアップ
   const linkedSelector = `[data-linked-note-id="${deletedNoteId}"]`;
   document.querySelectorAll(linkedSelector).forEach(el => {
     el.dataset.linkedNoteId = "";
-    // PDF紐付けとノート間紐付けの両方がなくなったらリンクステータスもクリアする
+    // PDF紐付けとテキストボックス間紐付けの両方がなくなったらリンクステータスもクリアする
     if (!el.dataset.linkedText) {
-      showLinkStatus(`ノート ${el.dataset.id} の紐付けを解除しました。`);
+      showLinkStatus(`テキストボックス間 ${el.dataset.id} の紐付けを解除しました。`);
     }
   });
-
-  // 🔴 削除: parentNoteId のクリーンアップロジックを削除
-  //   // 2. 削除されたノートを parentNoteId (トピックビュー階層の親) として参照しているノートをクリーンアップ
-  //   const parentSelector = `[data-parent-note-id="${deletedNoteId}"]`;
-  //   document.querySelectorAll(parentSelector).forEach(el => {
-  //     el.dataset.parentNoteId = "";
-  //   });
-
-  // データが変更されたので保存をスケジュール
   scheduleSave();
 }
 
@@ -519,7 +508,7 @@ function showNoteTextStylePalette(note) {
   });
   palette.appendChild(attributeRow);
 
-  // 4行目：紐付けボタン
+  // 4行目：紐付け追加ボタン
   const linkRow = document.createElement("div");
   linkRow.style.display = "flex";
   linkRow.style.gap = "6px";
@@ -530,7 +519,7 @@ function showNoteTextStylePalette(note) {
   linkBtn.textContent = "紐付け追加";
   linkBtn.title = "PDF/別のテキストボックスに紐付け";
   linkBtn.style.flexGrow = 1;
-  linkBtn.style.width = "50%";
+  linkBtn.style.width = "100%"; // 削除ボタンを下に移動したので幅を広げる
   linkBtn.onclick = () => {
     const noteBtn = $("addNoteButton");
     const highlightBtn = $("addHighlightButton");
@@ -555,72 +544,42 @@ function showNoteTextStylePalette(note) {
 
     const vc = $("viewerContainer");
     if (vc) vc.style.cursor = "crosshair";
-    console.log("ノートをPDFまたは別のノートに紐付けする準備完了");
-    showLinkStatus("紐付け開始: PDFテキストを選択するか、別のノートをクリック");
+    console.log("テキストボックスをPDFまたは別のテキストボックスに紐付けする準備完了");
+    showLinkStatus("紐付け開始: PDFテキストを選択するか、別のテキストボックスをクリック");
     setHighlightSelectable(true);
   };
   linkRow.appendChild(linkBtn);
-
-  // 紐付け削除ボタン
-  const linkDelBtn = document.createElement("button");
-  linkDelBtn.textContent = "紐付け削除";
-  linkDelBtn.title = "PDF/ノートの紐付けを削除";
-  linkDelBtn.style.flexGrow = 1;
-  linkDelBtn.style.width = "50%";
-  linkDelBtn.onclick = e => {
-    e.stopPropagation();
-    note.dataset.linkedText = "";
-
-    // ⭐️ ノート間紐付け削除処理 ⭐️
-    const oldLinkedNoteId = note.dataset.linkedNoteId;
-    if (oldLinkedNoteId) {
-      // 🔴 削除: 紐付け先ノートの親ID参照をクリア（トピックビュー階層用）
-      //       const targetNote = getNoteElementById(oldLinkedNoteId);
-      //       if (targetNote) {
-      //         targetNote.dataset.parentNoteId = "";
-      //       }
-    }
-    note.dataset.linkedNoteId = "";
-    // ---------------------------
-
-    showNoteTextStylePalette(note);
-
-    console.log("ノートの紐付けを削除しました:", note.textContent);
-    showLinkStatus("紐付け削除完了");
-    scheduleSave();
-  };
-  linkRow.appendChild(linkDelBtn);
   palette.appendChild(linkRow);
 
   // --------------------------------------------
-  // 💡 5行目：紐付け確認ボタンを新設
+  // 💡 5行目：紐付け確認＆削除UIを新設 (ここから修正)
   // --------------------------------------------
-  const confirmRow = document.createElement("div");
-  confirmRow.style.display = "flex";
-  confirmRow.style.gap = "6px";
-  confirmRow.style.marginTop = "6px";
-  confirmRow.style.width = "100%";
+  const confirmDelRow = document.createElement("div");
+  confirmDelRow.style.display = "flex";
+  confirmDelRow.style.flexDirection = "column";
+  confirmDelRow.style.gap = "6px";
+  confirmDelRow.style.marginTop = "6px";
+  confirmDelRow.style.width = "100%";
 
+  // 紐付けテキストまたはテキストボックスのIDの存在を確認
+  const hasLinkedText = note.dataset.linkedText && note.dataset.linkedText.trim() !== "";
+  const hasLinkedNote = note.dataset.linkedNoteId && note.dataset.linkedNoteId.trim() !== "";
+
+  // === 紐付け確認ボタン ===
   const confirmBtn = document.createElement("button");
   confirmBtn.textContent = "🔗 紐付け確認";
-  confirmBtn.title = "紐付けられているPDFテキストまたはノートIDを確認";
-  confirmBtn.style.flexGrow = 1;
-  confirmBtn.style.width = "100%";
+  confirmBtn.title = "紐付けられているPDFテキストまたはテキストボックスのIDを確認";
   confirmBtn.style.padding = "4px 8px";
   confirmBtn.style.borderRadius = "4px";
 
-  // 紐付けテキストまたはノートIDの存在を確認
-  const hasLinkedText = note.dataset.linkedText && note.dataset.linkedText.trim() !== "";
-  const hasLinkedNote = note.dataset.linkedNoteId && note.dataset.linkedNoteId.trim() !== ""; // ⭐️ ノート間紐付けの確認
-
   // ボタンの状態を制御
-  confirmBtn.disabled = !hasLinkedText && !hasLinkedNote; // どちらかの紐付けがあれば有効
+  confirmBtn.disabled = !hasLinkedText && !hasLinkedNote;
   if (hasLinkedText || hasLinkedNote) {
-    confirmBtn.style.backgroundColor = '#4a90e2'; // リンクあり: 青色
+    confirmBtn.style.backgroundColor = '#4a90e2';
     confirmBtn.style.color = 'white';
     confirmBtn.title = "紐付けを確認";
   } else {
-    confirmBtn.style.backgroundColor = '#f0f0f0'; // リンクなし: 灰色
+    confirmBtn.style.backgroundColor = '#f0f0f0';
     confirmBtn.style.color = '#999';
     confirmBtn.title = "紐付けがありません";
   }
@@ -629,19 +588,97 @@ function showNoteTextStylePalette(note) {
     e.stopPropagation();
     let message = "";
     if (hasLinkedText) {
-      message += "🔗 PDF紐付けテキスト:\n" + note.dataset.linkedText + "\n\n";
+      message += "🔗 PDF上の紐付けテキスト:\n" + note.dataset.linkedText + "\n\n";
     }
+
     if (hasLinkedNote) {
-      message += "🔗 ノート間紐付けID:\n" + note.dataset.linkedNoteId + "\n";
+      const linkedId = note.dataset.linkedNoteId;
+      // linkedIdを使って、DOMから紐付け先のテキストボックス要素を探す
+      const linkedNoteElement = document.querySelector(`[data-id="${linkedId}"]`);
+
+      let linkedNoteContent = "（紐付け先のテキストボックスが見つかりません）";
+
+      if (linkedNoteElement) {
+        // 紐付け先の要素が見つかったら、textContentからノート内容を取得
+        linkedNoteContent = linkedNoteElement.textContent;
+      }
+      message += "🔗 テキストボックス間の紐付けID:\n" + linkedId + "\n\n";
+      // 取得したノート内容をメッセージに追加
+      message += "📝 紐付け先のノート:\n" + linkedNoteContent + "\n";
     }
+
     if (message) {
       alert(message.trim());
     }
   };
-  confirmRow.appendChild(confirmBtn);
-  palette.appendChild(confirmRow);
+  confirmDelRow.appendChild(confirmBtn);
 
-  // 6行目：テキストボックス専用の削除ボタン
+  // === 削除オプションのチェックボックスと実行ボタン ===
+  // PDF紐付け解除チェックボックス
+  if (hasLinkedText) {
+    // 初期値はチェック済みにする (true)
+    const pdfCheck = createCheckbox("pdf-link-del", "PDF上の紐付けを削除 (linkedText)", true);
+    confirmDelRow.appendChild(pdfCheck);
+  }
+
+  // テキストボックス間紐付け解除チェックボックス
+  if (hasLinkedNote) {
+    // 初期値はチェック済みにする (true)
+    const noteCheck = createCheckbox("note-link-del", "テキストボックス間の紐付けを削除 (linkedNoteId)", true);
+    confirmDelRow.appendChild(noteCheck);
+  }
+
+  // 削除実行ボタン
+  if (hasLinkedText || hasLinkedNote) {
+    const executeDelBtn = document.createElement("button");
+    executeDelBtn.textContent = "☑️ 選択した紐付けを削除";
+    executeDelBtn.style.marginTop = "4px";
+    executeDelBtn.style.backgroundColor = 'red';
+    executeDelBtn.style.color = 'white';
+    executeDelBtn.style.padding = "4px 8px";
+    executeDelBtn.style.borderRadius = "4px";
+
+    executeDelBtn.onclick = (e) => {
+      e.stopPropagation();
+      let changeMade = false;
+
+      // DOMから現在のチェック状態を取得
+      const pdfCheckbox = confirmDelRow.querySelector('#pdf-link-del');
+      const noteCheckbox = confirmDelRow.querySelector('#note-link-del');
+
+      const shouldDeletePDF = pdfCheckbox?.checked;
+      const shouldDeleteNote = noteCheckbox?.checked;
+
+      if (!shouldDeletePDF && !shouldDeleteNote) {
+        alert("削除する項目が選択されていません。");
+        return;
+      }
+
+      // PDF紐付け削除
+      if (hasLinkedText && shouldDeletePDF) {
+        note.dataset.linkedText = "";
+        changeMade = true;
+      }
+
+      // テキストボックス間紐付け削除
+      if (hasLinkedNote && shouldDeleteNote) {
+        note.dataset.linkedNoteId = "";
+        changeMade = true;
+      }
+
+      if (changeMade) {
+        showLinkStatus("選択した紐付けを解除しました。");
+        showNoteTextStylePalette(note);
+        scheduleSave();
+      } else {
+        showLinkStatus("紐付けは変更されませんでした。");
+      }
+    };
+    confirmDelRow.appendChild(executeDelBtn);
+  }
+  palette.appendChild(confirmDelRow);
+
+  // 6行目：テキストボックス専用の削除ボタン (元の delBtn)
   const delBtn = document.createElement("button");
   delBtn.textContent = "× テキストボックスの削除";
   delBtn.style.color = "white";
@@ -652,21 +689,16 @@ function showNoteTextStylePalette(note) {
 
   delBtn.onclick = (e) => {
     e.stopPropagation();
-
-    // ⭐️ 修正点: 削除前に紐付けクリーンアップ処理を実行 ⭐️
     const deletedId = note.dataset.id;
     if (deletedId) {
-      // 削除対象のIDを参照していた他のノートから参照を解除する
       cleanupLinksAfterDeletion(deletedId);
     }
-    // -----------------------------------------------------
 
     doOp(OP.delete(note, note.parentElement));
     select(null);
     palette.remove();
     removeLinkSVG();
 
-    // 削除によりデータが変わるので保存をスケジュール
     scheduleSave();
   };
   palette.appendChild(delBtn);
@@ -682,6 +714,34 @@ function hideNoteColorPalette() {
   if (palette) {
     palette.style.display = "none";
   }
+}
+
+/**
+ * カスタムチェックボックス要素とラベルを生成するヘルパー関数
+ * @param {string} id - チェックボックスのID
+ * @param {string} labelText - ラベルとして表示するテキスト
+ * @param {boolean} checked - 初期状態でチェックするかどうか
+ * @returns {HTMLDivElement} ラベルとチェックボックスを含むコンテナ要素
+ */
+function createCheckbox(id, labelText, checked = false) {
+  const container = document.createElement("div");
+  container.style.display = "flex";
+  container.style.alignItems = "center";
+  container.style.gap = "4px";
+
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.id = id;
+  input.checked = checked;
+
+  const label = document.createElement("label");
+  label.htmlFor = id;
+  label.textContent = labelText;
+  label.style.fontSize = "12px";
+
+  container.appendChild(input);
+  container.appendChild(label);
+  return container;
 }
 
 export {
