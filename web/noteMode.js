@@ -24,7 +24,6 @@ function addNote(e) {
   note.dataset.bubbleAttached = "false";
   note.dataset.attribute = "";
   note.dataset.linkedNoteId = "";
-  // 🔴 削除: note.dataset.parentNoteId = ""; 
 
   const viewerContainer = $("viewerContainer");
   const viewerRect = viewerContainer.getBoundingClientRect();
@@ -617,14 +616,14 @@ function showNoteTextStylePalette(note) {
   // PDF紐付け解除チェックボックス
   if (hasLinkedText) {
     // 初期値はチェック済みにする (true)
-    const pdfCheck = createCheckbox("pdf-link-del", "PDF上の紐付けを削除 (linkedText)", true);
+    const pdfCheck = createCheckbox("pdf-link-del", "PDF上への紐付け", true);
     confirmDelRow.appendChild(pdfCheck);
   }
 
   // テキストボックス間紐付け解除チェックボックス
   if (hasLinkedNote) {
     // 初期値はチェック済みにする (true)
-    const noteCheck = createCheckbox("note-link-del", "テキストボックス間の紐付けを削除 (linkedNoteId)", true);
+    const noteCheck = createCheckbox("note-link-del", "テキストボックスへの紐付け", true);
     confirmDelRow.appendChild(noteCheck);
   }
 
