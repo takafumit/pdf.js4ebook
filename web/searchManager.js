@@ -130,22 +130,45 @@ function openSearchPanel() {
   input.focus();
 }
 
+// ハイライト用のCSSスタイルを定義
+const HIGHLIGHT_STYLE = 'background-color: rgba(173, 216, 230, 0.6); font-weight: bold;';
+
 async function performSearch(keyword, results) {
   results.innerHTML = "";
   if (!keyword) return;
+  // キーワードが正規表現の特殊文字として扱われないようにエスケープします
+  const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const lowerKeyword = keyword.toLowerCase();
+
+  // グローバルかつ大文字・小文字を区別しない正規表現を作成
+  const regex = new RegExp(escapedKeyword, 'gi');
 
   const searchPDF = document.getElementById("searchPDF").checked;
   const searchNotes = document.getElementById("searchNotes").checked;
   const searchHighlights = document.getElementById("searchHighlights").checked;
 
-  // テキストボックス検索
+  /**
+   * テキスト内のキーワードをハイライトしてHTMLを返すヘルパー関数
+   * @param {string} text 対象のテキスト
+   * @returns {string} ハイライトされたHTML文字列
+   */
+  function getHighlightedHtml(text) {
+    // 正規表現でマッチした部分を<span>タグで置き換える
+    return text.replace(regex, (match) =>
+      `<span style="${HIGHLIGHT_STYLE}">${match}</span>`
+    );
+  }
+
+  // --- 1. テキストボックス検索 ---
   if (searchNotes) {
     document.querySelectorAll(".note").forEach(note => {
       const text = note.textContent || "";
       if (text.toLowerCase().includes(lowerKeyword)) {
         const div = document.createElement("div");
-        div.textContent = `[テキストボックス] ${text}`;
+
+        // innerHTMLでハイライトされた文字列を挿入
+        div.innerHTML = `[テキストボックス] ${getHighlightedHtml(text)}`;
+
         div.style.cursor = "pointer";
         div.style.padding = "2px 4px";
         div.onclick = () => scrollTotext(note);
@@ -154,13 +177,17 @@ async function performSearch(keyword, results) {
     });
   }
 
-  // ハイライト検索
+  // --- 2. ハイライト検索 ---
   if (searchHighlights) {
     document.querySelectorAll(".highlight").forEach(hl => {
+      // dataset.textはハイライトされた元のテキストを保持している想定
       const text = hl.dataset.text || "";
       if (text.toLowerCase().includes(lowerKeyword)) {
         const div = document.createElement("div");
-        div.textContent = `[ハイライト] ${text}`;
+
+        // innerHTMLでハイライトされた文字列を挿入
+        div.innerHTML = `[ハイライト] ${getHighlightedHtml(text)}`;
+
         div.style.cursor = "pointer";
         div.style.padding = "2px 4px";
         div.onclick = () => scrollToHighlight(hl);
@@ -169,7 +196,7 @@ async function performSearch(keyword, results) {
     });
   }
 
-  // PDF本文検索
+  // --- 3. PDF本文検索 ---
   if (searchPDF) {
     const pdf = PDFViewerApplication.pdfDocument;
     if (!pdf) return;
@@ -179,9 +206,23 @@ async function performSearch(keyword, results) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
       const text = content.items.map(item => item.str).join(" ");
+
       if (text.toLowerCase().includes(lowerKeyword)) {
+
+        // キーワードの最初の出現位置を探し、その周辺のテキスト（前後50文字など）を切り出します
+        const firstIndex = text.toLowerCase().indexOf(lowerKeyword);
+        let start = Math.max(0, firstIndex - 50);
+        let end = Math.min(text.length, firstIndex + keyword.length + 50);
+
+        const snippet = text.substring(start, end);
+        const prefix = start > 0 ? "..." : "";
+        const suffix = end < text.length ? "..." : "";
+
         const div = document.createElement("div");
-        div.textContent = `[PDF ${i}ページ] ...${text.slice(0, 100)}...`;
+
+        // 切り出したスニペットをハイライトして挿入
+        div.innerHTML = `[PDF ${i}ページ] ${prefix}${getHighlightedHtml(snippet)}${suffix}`;
+
         div.style.cursor = "pointer";
         div.style.padding = "2px 4px";
         div.onclick = () => scrollToPage(i);
@@ -209,7 +250,7 @@ function scrollToHighlight(hl) {
   if (!pageView) return;
   const vp = pageView.viewport;
   const [viewX, viewY] = vp.convertToViewportPoint(hl.dataset.x, hl.dataset.y);
-  document.getElementById("viewerContainer").scrollTop =
+  document.getElementById("aviewerContainer").scrollTop =
     pageView.div.offsetTop + viewY;
 }
 

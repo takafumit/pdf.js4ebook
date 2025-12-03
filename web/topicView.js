@@ -81,7 +81,7 @@ function getOrCreateTopicViewContainer() {
   });
 
   const mainTitle = document.createElement('h1');
-  mainTitle.textContent = 'ノート';
+  mainTitle.textContent = 'トピックビュー';
   mainTitle.style.marginBottom = '20px';
   container.appendChild(mainTitle);
 
@@ -351,7 +351,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
             let contextNote = '';
 
             if (item.linkedText) {
-              // 1.2.1 PDFテキスト紐付けが存在する場合
+              // PDFテキスト紐付けが存在する場合
               contextText = item.linkedText;
               contextNote = `<strong>➔</strong> ${item.content}`;
             }
@@ -363,7 +363,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
               const maxLen = 50;
 
               if (item.linkedText) {
-                // 1.2.3 PDF紐付けとノート間紐付けが両方ある場合: 考察に追加
+                // PDF紐付けとノート間紐付けが両方ある場合: 考察に追加
                 let noteLinkInfo = '';
                 if (targetNoteContent) {
                   const targetSnippet = targetNoteContent.substring(0, maxLen) + (targetNoteContent.length > maxLen ? '...' : '');
@@ -374,7 +374,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
                 contextNote = `${contextNote}${noteLinkInfo}`;
 
               } else {
-                // 1.2.2 ノート間紐付けのみの場合: これがメイン情報となる
+                // ノート間紐付けのみの場合: これがメイン情報となる
                 const currentSnippet = item.content.substring(0, maxLen) + (item.content.length > maxLen ? '...' : '');
 
                 if (targetNoteContent) {
@@ -482,7 +482,7 @@ function drawKeyTopicSection(targetElement, keyTopics) {
   keyTopicSection.style.border = '2px solid #ffcc80';
 
   const sectionTitle = document.createElement('h2');
-  sectionTitle.textContent = '最重要';
+  sectionTitle.textContent = 'キーワード';
   sectionTitle.style.borderBottom = '3px solid #ffaa00';
   sectionTitle.style.paddingBottom = '5px';
   sectionTitle.style.marginBottom = '15px';
