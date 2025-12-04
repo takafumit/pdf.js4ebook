@@ -30,7 +30,6 @@ export const state = {
   undoStack: [],
   redoStack: [],
   linkingNote: null,
-  // ⭐️【追加】紐付け中の線の管理 ⭐️
   linkSVG: null,
   linkStartNote: null
 };
