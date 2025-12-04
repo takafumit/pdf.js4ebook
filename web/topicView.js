@@ -471,8 +471,34 @@ function analyzeTextForTopics(text) {
  * @param {HTMLElement} targetElement 描画対象のコンテナ
  * @param {{word: string, count: number}[]} keyTopics 最重要トピックのリスト
  */
+/**
+ * 最重要トピックのセクションを描画する
+ * @param {HTMLElement} targetElement 描画対象のコンテナ
+ * @param {{word: string, count: number}[]} keyTopics 最重要トピックのリスト
+ */
 function drawKeyTopicSection(targetElement, keyTopics) {
   if (keyTopics.length === 0) return;
+
+  // 全メモデータを取得（検索ロジックのために必要）
+  const allMemoElements = document.querySelectorAll(".note, .highlight");
+  const allMemoData = [];
+  allMemoElements.forEach(el => {
+    const isHighlight = el.classList.contains('highlight');
+    let content = (el.textContent || '').trim();
+    let linkedText = (el.dataset.linkedText || '').trim();
+    let highlightText = (el.dataset.text || '').trim();
+
+    if (isHighlight && highlightText.trim() === '') return;
+    if (isHighlight) content = highlightText;
+
+    allMemoData.push({
+      page: parseInt(el.dataset.page || "0", 10),
+      content,
+      // 検索とカウントのために、コンテンツとリンクテキストを結合
+      fullText: (content + ' ' + linkedText)
+    });
+  });
+
 
   const keyTopicSection = document.createElement('section');
   keyTopicSection.style.marginBottom = '40px';
@@ -495,19 +521,62 @@ function drawKeyTopicSection(targetElement, keyTopics) {
   topicList.style.gap = '10px';
 
   keyTopics.forEach(topic => {
+    // 検索対象の単語（大文字小文字を区別しない正規表現で使用）
+    const term = topic.word;
+    // 💡 単語の総出現回数を格納する変数
+    let totalOccurrenceCount = 0;
+    // 💡 部分一致で抽出された関連メモの配列
+    const relevantMemos = [];
+
+    // 単語全体をマッチさせるための正規表現（単語境界を使用、ただし日本語の場合は非貪欲なマッチング）
+    // ここでは、単語境界を厳密に適用せず、前回同様の部分一致ロジックを維持しつつ、出現回数を数えます。
+    // 「ノート」が「ノート1」に含まれるように、部分一致で検索し、カウントも行う正規表現を作成します。
+    // 例: /\bノート\b/g は使わず、/(ノート)/g のような部分一致のカウントにします。
+    const regex = new RegExp(term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+
+    allMemoData.forEach(item => {
+      const matches = item.fullText.match(regex);
+
+      if (matches) {
+        // 単語の出現回数を加算
+        totalOccurrenceCount += matches.length;
+        // 関連メモのリストも作成（クリックイベントで使用）
+        relevantMemos.push(item);
+      }
+    });
+
+    // チップに表示するテキストを「キーワード (単語の総出現回数)」に変更
+    const totalCountToDisplay = totalOccurrenceCount;
+
     const topicChip = document.createElement('span');
-    topicChip.textContent = `${topic.word} (${topic.count})`;
+    topicChip.textContent = `${topic.word} (${totalCountToDisplay})`;
+
     topicChip.style.backgroundColor = '#ffcc80';
     topicChip.style.color = '#333';
     topicChip.style.padding = '5px 10px';
     topicChip.style.borderRadius = '15px';
     topicChip.style.fontWeight = 'bold';
     topicChip.style.fontSize = '1.1em';
+    topicChip.style.cursor = 'pointer';
     topicList.appendChild(topicChip);
+
+    // 【💡 クリックイベント: 関連メモ一覧をアラートで表示】
+    topicChip.onclick = () => {
+      if (relevantMemos.length === 0) {
+        alert(`キーワード「${topic.word}」を含むメモはありません。`);
+        return;
+      }
+
+      const memoListText = relevantMemos.map(item =>
+        `P.${item.page}: ${item.content.substring(0, 40)}${item.content.length > 40 ? '...' : ''}`
+      ).join('\n');
+
+      alert(`キーワード「${topic.word}」に関連するメモ (${relevantMemos.length}件、総出現回数 ${totalOccurrenceCount}回):\n\n${memoListText}`);
+    };
   });
 
   keyTopicSection.appendChild(topicList);
 
-  // ノートセクションの前に挿入 (メインタイトルと topicContent の間に挿入される)
+  // ノートセクションの前に挿入
   targetElement.insertBefore(keyTopicSection, targetElement.firstChild);
 }

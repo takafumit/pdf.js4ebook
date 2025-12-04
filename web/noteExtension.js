@@ -13,6 +13,7 @@ import { updateNotePositions, createDeleteButton, showLinkStatus } from './annot
 import { OP, doOp, undo, redo } from './undoRedoManager.js';
 import { freehandMode } from './freehandMode.js';
 import { setupTopicViewButton } from './topicView.js';
+import { renderGraphView } from './graphView.js';
 
 /* ---------- グローバル設定 ---------- */
 // モードや Undo/Redo ，ローカルストレージ保存関連
@@ -516,6 +517,10 @@ document.getElementById("noteLayer").addEventListener("click", (e) => {
 // /* ---------- 検索機能起動 ---------- */
 document.getElementById("findButton").addEventListener("click", () => {
   openSearchPanel();
+});
+
+document.getElementById("graphButton").addEventListener("click", () => {
+  renderGraphView();
 });
 
 /* ---------- 起動 ---------- */
