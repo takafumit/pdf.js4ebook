@@ -24,6 +24,13 @@ function addNote(e) {
   note.dataset.bubbleAttached = "false";
   note.dataset.attribute = "";
   note.dataset.linkedNoteId = "";
+  // PDF紐付け時の座標データも初期化（データ構造の互換性のため）
+  note.dataset.linkedPage = "";
+  note.dataset.linkedPdfX = "";
+  note.dataset.linkedPdfY = "";
+  // 紐付け確認トグル状態を管理するデータセット
+  note.dataset.isLinkVisible = "false";
+
 
   const viewerContainer = $("viewerContainer");
   const viewerRect = viewerContainer.getBoundingClientRect();
@@ -289,6 +296,10 @@ function saveAllNotes() {
       linkedText: note.dataset.linkedText || "",
       attribute: note.dataset.attribute || "",
       linkedNoteId: note.dataset.linkedNoteId || "",
+      // 💡 座標情報も保存対象に追加
+      linkedPage: note.dataset.linkedPage || "",
+      linkedPdfX: note.dataset.linkedPdfX || "",
+      linkedPdfY: note.dataset.linkedPdfY || "",
     });
   });
   localStorage.setItem(TEXT_KEY, JSON.stringify({ notes }));
@@ -300,7 +311,7 @@ function saveAllNotes() {
   saveNotesToServer(notes);
 }
 
-// ⭐️【追加】特定のIDを持つノートDOM要素を取得するヘルパー関数 ⭐️
+// ⭐️【既存】特定のIDを持つノートDOM要素を取得するヘルパー関数 ⭐️
 /**
  * 特定の data-id を持つノート要素（DOM）を取得する
  * @param {string} itemId 検索したいノートの一意のID
@@ -396,6 +407,164 @@ function removeLinkSVG() {
   }
 }
 
+
+// ⭐️【修正】静的なリンク線を描画する関数（ノート間紐付け用） ⭐️
+/**
+ * 2つのノート間を結ぶ線を描画し、SVGを管理する
+ * @param {HTMLElement} startNote - 始点となるノート要素
+ * @param {HTMLElement} endNote - 終点となるノート要素
+ * @param {string} lineId - 線のDOM ID
+ */
+function drawStaticLinkLine(startNote, endNote, lineId) {
+  // 既存のSVG要素を削除
+  removeStaticLinkSVG();
+  hideCustomPopup(); // カスタムポップアップも閉じる
+
+  const viewerContainer = $("viewerContainer");
+  if (!viewerContainer) return;
+
+  // 新しいSVG要素を作成
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = "staticLinkLineSVG";
+  svg.style.position = "absolute";
+  svg.style.top = `0`;
+  svg.style.left = `0`;
+  // ViewerContainerのサイズに合わせてSVGのサイズを設定
+  const viewerRect = viewerContainer.getBoundingClientRect();
+  svg.style.width = `${viewerContainer.scrollWidth}px`;
+  svg.style.height = `${viewerContainer.scrollHeight}px`;
+  svg.style.pointerEvents = "none";
+  svg.style.zIndex = "5000";
+
+  // viewerContainerに挿入
+  viewerContainer.appendChild(svg);
+
+  // 始点（ノート）の座標を計算
+  const startRect = startNote.getBoundingClientRect();
+  const startX = startRect.left + startRect.width / 2;
+  const startY = startRect.top + startRect.height / 2;
+
+  // 終点（ノート）の座標を計算
+  const endRect = endNote.getBoundingClientRect();
+  const endX = endRect.left + endRect.width / 2;
+  const endY = endRect.top + endRect.height / 2;
+
+  // SVG内での座標に変換（ViewerContainerの左上基準）
+  const svgStartX = startX - viewerRect.left + viewerContainer.scrollLeft;
+  const svgStartY = startY - viewerRect.top + viewerContainer.scrollTop;
+  const svgEndX = endX - viewerRect.left + viewerContainer.scrollLeft;
+  const svgEndY = endY - viewerRect.top + viewerContainer.scrollTop;
+
+  // line要素を作成
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.id = lineId;
+  line.setAttribute("x1", svgStartX);
+  line.setAttribute("y1", svgStartY);
+  line.setAttribute("x2", svgEndX);
+  line.setAttribute("y2", svgEndY);
+  line.setAttribute("stroke", "gray"); // 💡 灰色に変更
+  line.setAttribute("stroke-width", "3");
+  line.setAttribute("class", "static-link-line");
+
+  svg.appendChild(line);
+}
+
+// ⭐️【修正】静的なリンク線（SVG）とノートの強調表示を削除する関数 ⭐️
+function removeStaticLinkSVG() {
+  const svg = document.getElementById("staticLinkLineSVG");
+  if (svg) svg.remove();
+
+  // ノートの強調表示を解除
+  document.querySelectorAll('.linked-note-target').forEach(el => {
+    el.classList.remove('linked-note-target');
+    if (el.id === 'linked-note-target') el.id = '';
+  });
+}
+
+// ⭐️【新規追加】カスタムポップアップの作成・表示・非表示 ⭐️
+function createCustomPopup() {
+  if ($('customLinkPopup')) return;
+
+  const popup = document.createElement('div');
+  popup.id = 'customLinkPopup';
+  Object.assign(popup.style, {
+    position: 'fixed',
+    top: '50px',
+    right: '50px',
+    width: '350px',
+    maxHeight: '400px',
+    backgroundColor: '#f9f9f9',
+    border: '1px solid #ccc',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+    borderRadius: '4px',
+    zIndex: '6000',
+    display: 'none',
+    flexDirection: 'column',
+    fontFamily: 'sans-serif',
+  });
+
+  // ヘッダー
+  const header = document.createElement('div');
+  header.id = 'customPopupHeader';
+  header.textContent = '🔗 紐付け情報';
+  Object.assign(header.style, {
+    padding: '8px 12px',
+    backgroundColor: '#e0e0e0',
+    fontWeight: 'bold',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  });
+  popup.appendChild(header);
+
+  // コンテンツ
+  const content = document.createElement('div');
+  content.id = 'customPopupContent';
+  Object.assign(content.style, {
+    padding: '12px',
+    overflowY: 'auto',
+    fontSize: '14px',
+    whiteSpace: 'pre-wrap', // 改行を反映
+    wordBreak: 'break-word',
+  });
+  popup.appendChild(content);
+
+  document.body.appendChild(popup);
+}
+
+function showCustomPopup(title, content) {
+  createCustomPopup();
+  const popup = $('customLinkPopup');
+  const header = $('customPopupHeader');
+  const contentDiv = $('customPopupContent');
+  const closeBtn = header ? header.querySelector('button') : null; // closeBtnを明確に取得
+
+  if (popup && header && contentDiv) {
+    // 💡 修正: クローズボタンを一時的に保持し、タイトル設定後に戻す、またはtextContentを安全に設定する
+    if (closeBtn) {
+      header.removeChild(closeBtn); // ボタンを一時的に取り除く
+    }
+
+    header.textContent = title; // タイトルを設定
+
+    if (closeBtn) {
+      header.appendChild(closeBtn); // ボタンを戻す
+    }
+
+    contentDiv.innerHTML = content;
+    popup.style.display = 'flex';
+  } else {
+    console.error("カスタムポップアップ要素が見つかりません。");
+  }
+}
+
+function hideCustomPopup() {
+  const popup = $('customLinkPopup');
+  if (popup) {
+    popup.style.display = 'none';
+  }
+}
+
 // 3. テキストボックス表示補助
 // showNoteTextStylePalette(note), hideNoteColorPalette()
 function showNoteTextStylePalette(note) {
@@ -416,7 +585,7 @@ function showNoteTextStylePalette(note) {
   }
   palette.innerHTML = "";
 
-  // 1行目：文字サイズ
+  // 1行目：文字サイズ (既存のロジックは省略)
   const sizeRow = document.createElement("div");
   sizeRow.style.display = "flex";
   sizeRow.style.gap = "6px";
@@ -445,7 +614,7 @@ function showNoteTextStylePalette(note) {
   });
   palette.appendChild(sizeRow);
 
-  // 2行目：文字色
+  // 2行目：文字色 (既存のロジックは省略)
   const colorRow = document.createElement("div");
   colorRow.style.display = "flex";
   colorRow.style.gap = "6px";
@@ -467,7 +636,7 @@ function showNoteTextStylePalette(note) {
   });
   palette.appendChild(colorRow);
 
-  // 3行目：属性追加
+  // 3行目：属性追加 (既存のロジックは省略)
   const attributeRow = document.createElement("div");
   attributeRow.style.display = "flex";
   attributeRow.style.gap = "6px";
@@ -507,7 +676,7 @@ function showNoteTextStylePalette(note) {
   });
   palette.appendChild(attributeRow);
 
-  // 4行目：紐付け追加ボタン
+  // 4行目：紐付け追加ボタン (既存のロジックは省略)
   const linkRow = document.createElement("div");
   linkRow.style.display = "flex";
   linkRow.style.gap = "6px";
@@ -551,7 +720,7 @@ function showNoteTextStylePalette(note) {
   palette.appendChild(linkRow);
 
   // --------------------------------------------
-  // 💡 5行目：紐付け確認＆削除UIを新設 (ここから修正)
+  // 💡 5行目：紐付け確認＆削除UI (修正部分)
   // --------------------------------------------
   const confirmDelRow = document.createElement("div");
   confirmDelRow.style.display = "flex";
@@ -564,7 +733,7 @@ function showNoteTextStylePalette(note) {
   const hasLinkedText = note.dataset.linkedText && note.dataset.linkedText.trim() !== "";
   const hasLinkedNote = note.dataset.linkedNoteId && note.dataset.linkedNoteId.trim() !== "";
 
-  // === 紐付け確認ボタン ===
+  // === 紐付け確認ボタン (トグル機能実装) ===
   const confirmBtn = document.createElement("button");
   confirmBtn.textContent = "🔗 紐付け確認";
   confirmBtn.title = "紐付けられているPDFテキストまたはテキストボックスのIDを確認";
@@ -583,32 +752,70 @@ function showNoteTextStylePalette(note) {
     confirmBtn.title = "紐付けがありません";
   }
 
+  // ⭐️ 修正：紐付け確認トグルロジック ⭐️
   confirmBtn.onclick = (e) => {
     e.stopPropagation();
-    let message = "";
-    if (hasLinkedText) {
-      message += "🔗 PDF上の紐付けテキスト:\n" + note.dataset.linkedText + "\n\n";
+
+    const isVisible = note.dataset.isLinkVisible === "true";
+
+    if (isVisible) {
+      // 状態: 表示中 -> 解除
+      removeStaticLinkSVG();
+      hideCustomPopup(); // カスタムポップアップを閉じる
+      note.dataset.isLinkVisible = "false";
+      showLinkStatus("紐付け表示を解除しました。");
+      return;
     }
 
+    let pdfContent = "";
+    let noteLinkSuccess = false;
+
+    // 1. PDF上のテキスト紐付け (カスタムポップアップ表示)
+    if (hasLinkedText) {
+      pdfContent += `<div style="font-weight: bold; margin-bottom: 5px; color: #d9534f;">📚 PDF上のテキスト紐付け:</div>`;
+      pdfContent += `<div style="margin-left: 10px; border-left: 2px solid #d9534f; padding-left: 8px;">`;
+      pdfContent += `<p style="margin: 0;"><strong>テキスト:</strong> ${note.dataset.linkedText}</p>`;
+      if (note.dataset.linkedPage) {
+        pdfContent += `<p style="margin: 0; font-size: 12px; color: #777;">P.${note.dataset.linkedPage} (X: ${note.dataset.linkedPdfX}, Y: ${note.dataset.linkedPdfY})</p>`;
+      }
+      pdfContent += `</div>`;
+    }
+
+    // 2. テキストボックス間の紐付け (線と強調表示)
     if (hasLinkedNote) {
       const linkedId = note.dataset.linkedNoteId;
-      // linkedIdを使って、DOMから紐付け先のテキストボックス要素を探す
       const linkedNoteElement = document.querySelector(`[data-id="${linkedId}"]`);
 
-      let linkedNoteContent = "（紐付け先のテキストボックスが見つかりません）";
-
       if (linkedNoteElement) {
-        // 紐付け先の要素が見つかったら、textContentからノート内容を取得
-        linkedNoteContent = linkedNoteElement.textContent;
+        // 線を描画
+        drawStaticLinkLine(note, linkedNoteElement, "note-to-note-link");
+
+        // 紐付け先のテキストボックスを強調表示 (CSSで.linked-note-targetのスタイル定義が必要)
+        linkedNoteElement.classList.add('linked-note-target');
+        linkedNoteElement.id = 'linked-note-target'; // 一時IDを付与
+        noteLinkSuccess = true;
+      } else {
+        console.warn(`紐付け先のノートID ${linkedId} が見つかりません。`);
       }
-      message += "🔗 テキストボックス間の紐付けID:\n" + linkedId + "\n\n";
-      // 取得したノート内容をメッセージに追加
-      message += "📝 紐付け先のノート:\n" + linkedNoteContent + "\n";
     }
 
-    if (message) {
-      alert(message.trim());
+    // メッセージの表示と状態更新
+    if (pdfContent) {
+      // 💡 ポップアップの表示
+      const title = `🔗 紐付け情報 `;
+      showCustomPopup(title, pdfContent);
     }
+
+    if (noteLinkSuccess || pdfContent) {
+      note.dataset.isLinkVisible = "true";
+      let status = [];
+      if (noteLinkSuccess) status.push("テキストボックス間の線");
+      if (pdfContent) status.push("PDF上の紐付けテキスト");
+      showLinkStatus(`${status.join('と')}を表示しました。`);
+    } else {
+      showLinkStatus("紐付けが見つかりませんでした。");
+    }
+
   };
   confirmDelRow.appendChild(confirmBtn);
 
@@ -656,6 +863,9 @@ function showNoteTextStylePalette(note) {
       // PDF紐付け削除
       if (hasLinkedText && shouldDeletePDF) {
         note.dataset.linkedText = "";
+        note.dataset.linkedPage = "";
+        note.dataset.linkedPdfX = "";
+        note.dataset.linkedPdfY = "";
         changeMade = true;
       }
 
@@ -666,6 +876,8 @@ function showNoteTextStylePalette(note) {
       }
 
       if (changeMade) {
+        removeStaticLinkSVG(); // 紐付け削除時も線と強調表示を解除
+        hideCustomPopup(); // ポップアップを閉じる
         showLinkStatus("選択した紐付けを解除しました。");
         showNoteTextStylePalette(note);
         scheduleSave();
@@ -697,6 +909,8 @@ function showNoteTextStylePalette(note) {
     select(null);
     palette.remove();
     removeLinkSVG();
+    removeStaticLinkSVG(); // 静的な線も削除
+    hideCustomPopup(); // ポップアップを閉じる
 
     scheduleSave();
   };
@@ -712,6 +926,18 @@ function hideNoteColorPalette() {
   const palette = $("noteTextStylePalette");
   if (palette) {
     palette.style.display = "none";
+
+    // 💡 修正: パレットが閉じるときに静的な線とポップアップを削除・非表示にする処理を追加
+    removeStaticLinkSVG(); // 静的な線（SVG）を削除し、ターゲットノートの強調を解除
+    hideCustomPopup(); // カスタムポップアップを非表示にする
+
+    // 💡 修正: 紐付け確認の状態もリセットする
+    // 現在選択されているテキストボックスを取得し、状態をリセット
+    const selectedNote = document.querySelector('.note.selected');
+    if (selectedNote) {
+      selectedNote.dataset.isLinkVisible = "false";
+    }
+
   }
 }
 
@@ -755,4 +981,7 @@ export {
   removeLinkSVG,
   getNoteElementById,
   cleanupLinksAfterDeletion,
+  // 新しい関数をエクスポート
+  drawStaticLinkLine,
+  removeStaticLinkSVG,
 }
