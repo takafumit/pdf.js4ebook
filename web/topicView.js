@@ -1,13 +1,18 @@
 // 最重要トピック対応の処理を追加
-
-const JAPANESE_STOP_WORDS = new Set([
+const JAPANESE_STOP_WORDS_ARRAY = [
   'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
   'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
   'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
   'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
   'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
   'p', 'ページ'
-]);
+];
+
+// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソートするロジックは維持
+JAPANESE_STOP_WORDS_ARRAY.sort((a, b) => b.length - a.length);
+
+// Setに変換（検索の高速化のため）
+const JAPANESE_STOP_WORDS = new Set(JAPANESE_STOP_WORDS_ARRAY);
 
 const ENGLISH_STOP_WORDS = new Set([
   'the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 'if',
@@ -341,7 +346,8 @@ function drawAttributeGroupedData(targetElement, dataMap) {
         if (attributeKey === 'CORE_INSIGHTS_HIGHLIGHT' || attributeKey === 'CORE_INSIGHTS_LINKED_NOTE') {
           if (item.type === 'highlight') {
             // 1.1 ハイライト (定義) - 太字を適用 (スペース調整済み)
-            itemContentHTML = `<span style="color: #000; font-weight: bold;">
+            itemContentHTML = `
+                            <span style="color: #000; font-weight: bold;">
                                 <strong>✓ </strong> ${item.content} 
                                 <span style="font-size: 0.8em; color: #888; font-weight: normal;">(P.${item.page})</span>
                             </span>
@@ -433,6 +439,8 @@ function analyzeTextForTopics(text) {
   // 全体の文字数に対して日本語文字が一定割合（例：20%）以上であれば日本語と見なす
   const isJapanese = totalCharCount > 0 && (japaneseCharCount / totalCharCount) > 0.20;
   const stopWords = isJapanese ? JAPANESE_STOP_WORDS : ENGLISH_STOP_WORDS;
+  // 💡 語尾除去処理のために、ソート済みの配列版も利用
+  const stopWordsArray = isJapanese ? JAPANESE_STOP_WORDS_ARRAY : [];
 
   // 1. 前処理: 小文字化、句読点・記号の除去
   const cleanedText = text
@@ -447,9 +455,45 @@ function analyzeTextForTopics(text) {
   // スペース区切りで単語を区切る
   const words = cleanedText.split(' ').filter(word => word.length > 1); // 1文字以下の単語は無視
 
+  // 【💡 修正点: 単語の語幹を抽出するロジック（数字・助詞除去）】
+  const baseWords = words.map(word => {
+    let currentWord = word;
+    let originalLength;
+
+    // 1. 助詞・活用語尾の反復除去 (日本語の場合のみ)
+    if (isJapanese) {
+      // 💡 長いストップワードから順に、末尾一致を試みる
+      do {
+        originalLength = currentWord.length;
+        let matchedStopWord = null;
+
+        for (const sw of stopWordsArray) {
+          // 単語の長さがストップワードより長く、末尾がストップワードと一致する場合
+          // 例: 'ノートについて'に対して'について'がマッチ
+          if (currentWord.length > sw.length && currentWord.endsWith(sw)) {
+            matchedStopWord = sw;
+            break; // 最長一致が保証されているため、最初に見つかったものを採用
+          }
+        }
+
+        if (matchedStopWord) {
+          // マッチしたストップワードを末尾から削除
+          currentWord = currentWord.substring(0, currentWord.length - matchedStopWord.length);
+        }
+
+        // 単語の長さが変わらなくなったらループを抜ける
+      } while (currentWord.length < originalLength);
+    }
+
+    // 2. 数字サフィックスの除去 ('ノート1' -> 'ノート')
+    currentWord = currentWord.replace(/[-_\d]+$/, '');
+
+    return currentWord;
+  }).filter(word => word.length > 1); // 再度1文字以下の単語は無視
+
   // 3. 頻度計算とストップワード除去
   const wordCounts = new Map();
-  words.forEach(word => {
+  baseWords.forEach(word => {
     // 判定されたストップワードリストを使用
     if (!stopWords.has(word) && word.trim() !== '') {
       wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
@@ -528,10 +572,7 @@ function drawKeyTopicSection(targetElement, keyTopics) {
     // 💡 部分一致で抽出された関連メモの配列
     const relevantMemos = [];
 
-    // 単語全体をマッチさせるための正規表現（単語境界を使用、ただし日本語の場合は非貪欲なマッチング）
-    // ここでは、単語境界を厳密に適用せず、前回同様の部分一致ロジックを維持しつつ、出現回数を数えます。
-    // 「ノート」が「ノート1」に含まれるように、部分一致で検索し、カウントも行う正規表現を作成します。
-    // 例: /\bノート\b/g は使わず、/(ノート)/g のような部分一致のカウントにします。
+    // 単語全体をマッチさせるための正規表現（単語境界を使用せず、部分一致のカウントにする）
     const regex = new RegExp(term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
 
     allMemoData.forEach(item => {
