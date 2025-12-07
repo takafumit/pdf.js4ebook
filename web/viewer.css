@@ -112,6 +112,7 @@
   --toolbarButton-loadAnnotation-icon: url(images/original-load.svg);
   --toolbarButton-freehand-icon: url(images/original-freehand.svg);
   --toolbarButton-topicView-icon: url(images/original-showNote.svg);
+  --toolbarButton-graphView-icon: url(images/original-graph.svg);
 
   --toolbarButton-editorSignature-icon: url(images/toolbarButton-editorSignature.svg);
   --toolbarButton-menuArrow-icon: url(images/toolbarButton-menuArrow.svg);
@@ -420,6 +421,9 @@ body {
 }
 #topicViewButton::before{
   mask-image: var(--toolbarButton-topicView-icon);
+}
+#graphButton::before{
+  mask-image: var(--toolbarButton-graphView-icon);
 }
 
 /* もともと表示されている注釈機能を非表示に */
