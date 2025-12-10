@@ -1,5 +1,28 @@
 // graphView.js
 
+const JAPANESE_STOP_WORDS_ARRAY = [
+  'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
+  'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
+  'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
+  'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
+  'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
+  'p', 'ページ'
+];
+
+// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソート
+JAPANESE_STOP_WORDS_ARRAY.sort((a, b) => b.length - a.length);
+
+const JAPANESE_STOP_WORDS = new Set(JAPANESE_STOP_WORDS_ARRAY);
+
+const ENGLISH_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 'if',
+  'be', 'not', 'of', 'in', 'on', 'at', 'to', 'from', 'by', 'with',
+  'it', 'its', 'this', 'that', 'we', 'our', 'us', 'you', 'your', 'they', 'their',
+  'can', 'will', 'would', 'should', 'have', 'has', 'had', 'do', 'does', 'did',
+  'as', 'for', 'about', 'out', 'up', 'down', 'only', 'all', 'any', 'some',
+  'p'
+]);
+
 // =============================================================
 // I. データの抽出と準備
 // =============================================================
@@ -42,11 +65,12 @@ function extractAllMemoText() {
 }
 
 /**
- * TF-IDFで重要語トップ10を抽出する (元のロジックを再利用)
+ * TF-IDFで重要語トップ10を抽出する (TF-IDF計算後、ストップワードを除去するロジックを適用)
  */
 function extractKeyTermsTFIDF(allItems) {
   const docs = allItems.map(i => i.fullText);
 
+  // 💡 トークナイズ処理はシンプルに保ち、紐付けが途切れないようにする
   const tokenize = text =>
     text
       .toLowerCase()
@@ -80,11 +104,14 @@ function extractKeyTermsTFIDF(allItems) {
     tfidf[term] = totalTFIDF;
   });
 
-  // 上位10語を返す
+  // 💡 修正箇所: TF-IDFスコアに基づいてソートした後、ストップワードを除外
+  const allStopWords = new Set([...JAPANESE_STOP_WORDS, ...ENGLISH_STOP_WORDS]);
+
   return Object.entries(tfidf)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(e => e[0]);
+    .map(e => e[0]) // 単語のみの配列にする
+    .filter(term => !allStopWords.has(term)) // ストップワードを除外
+    .slice(0, 10); // 上位10語を返す
 }
 
 // =============================================================
@@ -264,7 +291,7 @@ export function renderGraphView() {
         style="margin-top:20px; position:relative; width:100%; height:600px; border:1px solid #ddd; background:#f9f9f9; overflow:hidden;">
     </div>
 
-    <div id="linkInfoList" style="margin-top:20px; padding:15px; border:1px solid #eee; background:#fafafa; max-height: 200px; overflow-y: auto;">
+    <div id="linkInfoList" style="margin-top:20px; padding:15px; border:1px solid #eee; background:#fafafa; max-height: 400px; overflow-y: auto;">
         <h3>関連性詳細リスト</h3>
     </div>
 `;
@@ -302,7 +329,6 @@ export function renderGraphView() {
   });
 
   // B. SVGレイヤーの作成 (線を描画するため)
-  // z-indexを0にして、ノード(z-index: 10)の下に線が来るようにする
   const svgNS = "http://www.w3.org/2000/svg";
   const svgEl = document.createElementNS(svgNS, "svg");
   svgEl.style.position = "absolute";
@@ -330,12 +356,7 @@ export function renderGraphView() {
       const isStrong = link.weight >= 5; // ノート間紐付けがある場合
 
       line.setAttribute("stroke", isStrong ? "#ff8c00" : "#bbb"); // 色
-      line.setAttribute("stroke-width", isStrong ? "3" : "1");    // 太さ
-
-      if (!isStrong) {
-        // 共起のみの場合は破線にする等の演出も可能
-        // line.setAttribute("stroke-dasharray", "5,5"); 
-      }
+      line.setAttribute("stroke-width", isStrong ? "3" : "1");    // 太さ
 
       // SVGに追加
       svgEl.appendChild(line);
@@ -346,7 +367,21 @@ export function renderGraphView() {
   graphArea.appendChild(svgEl);
 
   // D. ノードの描画 (DIV)
+
+  // 💡 【追加】ノード描画をスキップする単語リスト
+  const NODES_TO_HIDE = new Set([
+    // 日本語の助詞・助動詞の一部
+    'の', 'は', 'を', 'に', 'が', 'と', 'で', 'も',
+    // 英語の頻出ストップワードの一部
+    'to', 'of', 'and', 'the', 'is', 'a', 'an'
+  ]);
+
   nodes.forEach((node, index) => {
+    // 💡 【追加】非表示リストに含まれるノードは描画をスキップ
+    if (NODES_TO_HIDE.has(node.id)) {
+      return;
+    }
+
     const coords = nodeCoordinates.get(node.id);
     const nodeEl = document.createElement('div');
 
@@ -389,14 +424,19 @@ export function renderGraphView() {
   // E. 関連情報リストの表示 (既存ロジック維持)
   if (links.length > 0) {
     links.sort((a, b) => b.weight - a.weight).forEach(link => {
+      // 💡 【変更】リスト表示時も、ノイズノードが含まれるリンクはスキップ
+      if (NODES_TO_HIDE.has(link.source) || NODES_TO_HIDE.has(link.target)) {
+        return;
+      }
+
       const linkInfo = document.createElement('p');
       const isStrong = link.weight >= 5;
       const label = isStrong ? '🔗 紐付け関連' : '📄 共起関連';
 
       linkInfo.innerHTML = `
-        <span style="color:${isStrong ? '#d05a00' : '#777'}; font-weight:bold;">${label}</span> 
-        [ ${link.source} ] - [ ${link.target} ] 
-      `;
+        <span style="color:${isStrong ? '#d05a00' : '#777'}; font-weight:bold;">${label}</span> 
+        [ ${link.source} ] - [ ${link.target} ] 
+      `;
       linkInfo.style.borderBottom = '1px solid #eee';
       linkInfo.style.padding = '5px 0';
       linkInfo.style.margin = '0';
