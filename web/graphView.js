@@ -29,7 +29,7 @@ const ENGLISH_STOP_WORDS = new Set([
 
 /**
  * 全てのメモ要素からテキストと関連情報を抽出する
- * 💡 ノート間リンクID (linkedNoteId) を含めるように拡張
+ * 💡 テキストボックス間紐付けID (linkedNoteId) を含めるように拡張
  */
 function extractAllMemoText() {
   const elements = document.querySelectorAll(".note, .highlight");
@@ -43,11 +43,11 @@ function extractAllMemoText() {
       : (el.textContent || "").trim();
 
     const linkedText = (el.dataset.linkedText || "").trim();
-    const linkedNoteId = (el.dataset.linkedNoteId || "").trim(); // ノート間リンクID
+    const linkedNoteId = (el.dataset.linkedNoteId || "").trim();
     const page = parseInt(el.dataset.page || "0", 10);
     const id = el.dataset.id || Math.random().toString(36);
 
-    // コンテンツがないが、リンク情報がある場合は含める
+    // コンテンツがないが、紐付け情報がある場合は含める
     if (!content && !linkedText && !linkedNoteId) return;
 
     items.push({
@@ -55,17 +55,22 @@ function extractAllMemoText() {
       page,
       content,
       linkedText,
-      linkedNoteId, // 💡 紐付け先IDを保持
+      linkedNoteId,
       isLinkedToPDF: linkedText.length > 0,
       fullText: (content + " " + linkedText).toLowerCase() // 全て小文字で保存
     });
   });
 
+  // 💡 確認用ログ
+  console.log("--- 抽出された全メモデータ ---");
+  console.log(items);
+  console.log("------------------------------");
+
   return items;
 }
 
 /**
- * TF-IDFで重要語トップ10を抽出する (TF-IDF計算後、ストップワードを除去するロジックを適用)
+ * TF-IDFで重要語トップ15を抽出する (TF-IDF計算後、ストップワードを除去するロジックを適用)
  */
 function extractKeyTermsTFIDF(allItems) {
   const docs = allItems.map(i => i.fullText);
@@ -104,14 +109,14 @@ function extractKeyTermsTFIDF(allItems) {
     tfidf[term] = totalTFIDF;
   });
 
-  // 💡 修正箇所: TF-IDFスコアに基づいてソートした後、ストップワードを除外
+  // 💡 TF-IDFスコアに基づいてソートした後、ストップワードを除外
   const allStopWords = new Set([...JAPANESE_STOP_WORDS, ...ENGLISH_STOP_WORDS]);
 
   return Object.entries(tfidf)
     .sort((a, b) => b[1] - a[1])
     .map(e => e[0]) // 単語のみの配列にする
     .filter(term => !allStopWords.has(term)) // ストップワードを除外
-    .slice(0, 10); // 上位10語を返す
+    .slice(0, 15); // 💡 上位15語を返すように修正
 }
 
 // =============================================================
@@ -157,14 +162,18 @@ function calculateRelations(allItems, keyTerms) {
     });
     const termsArray = Array.from(presentTerms);
 
-    // 2. 共起のカウント (重み: 1) - 同じメモ内での関連
+    // 2. 共起のカウント (重み: 1 または 5) - 同じメモ内での関連
+    // 💡【修正点】PDFに紐付けされているメモの場合、内部共起の重みを 5 に設定
+    // これにより、PDFハイライトとテキストボックスのキーワードが強い関連として繋がる
+    const baseWeight = item.isLinkedToPDF ? 5 : 1;
+
     for (let i = 0; i < termsArray.length; i++) {
       for (let j = i + 1; j < termsArray.length; j++) {
-        incrementRelation(termsArray[i], termsArray[j], 1);
+        incrementRelation(termsArray[i], termsArray[j], baseWeight);
       }
     }
 
-    // 3. 💡 ノート間紐付けによる関連のカウント (重み: 5) - 強い関連性
+    // 3. 💡 テキストボックス間紐付けによる関連のカウント (重み: 5) - 強い関連性 (変更なし)
     if (item.linkedNoteId) {
       const linkedItem = memoIdMap.get(item.linkedNoteId);
       if (linkedItem) {
@@ -177,7 +186,7 @@ function calculateRelations(allItems, keyTerms) {
           }
         });
 
-        // リンク元のキーワードとリンク先のキーワード全てを関連付ける (重み 5)
+        // 紐付け元のキーワードと紐付け先のキーワード全てを関連付ける (重み 5)
         termsArray.forEach(sourceTerm => {
           linkedTerms.forEach(targetTerm => {
             incrementRelation(sourceTerm, targetTerm, 5);
@@ -190,6 +199,7 @@ function calculateRelations(allItems, keyTerms) {
   return relationMap;
 }
 
+// ... (buildGraphData関数に修正あり)
 /**
  * グラフ描画のためのノードとエッジのデータを準備する
  */
@@ -208,8 +218,8 @@ function buildGraphData(keyTerms, relationMap) {
       // エッジは (A, B) と (B, A) で重複するため、一方向のみ追加
       const linkKey = source < target ? `${source}-${target}` : `${target}-${source}`;
 
-      // 紐付けや共起で重みが 1 より大きい場合のみエッジを作成
-      if (!addedLinks.has(linkKey) && weight > 1) {
+      // 💡【修正点】重みが 1 以上の場合にエッジを作成 (すべての共起/紐付けを表示)
+      if (!addedLinks.has(linkKey) && weight >= 1) {
         links.push({
           source: source,
           target: target,
@@ -223,6 +233,7 @@ function buildGraphData(keyTerms, relationMap) {
   return { nodes, links };
 }
 
+// ... (renderGraphView関数に修正なし)
 /**
  * グラフビューを描画するメイン関数
  */
@@ -263,7 +274,7 @@ export function renderGraphView() {
   // 5. 基本UIの描画
   container.innerHTML = `
     <h1 style="color:#2a66b9;">グラフビュー</h1>
-    
+
     <button id="closeGraphBtn"
         style="
             position: absolute;
@@ -283,8 +294,8 @@ export function renderGraphView() {
     
     <p style="margin-bottom:20px; color:#555; font-size:0.9em;">
         <strong>線の凡例:</strong><br>
-        <span style="color:#d05a00; font-weight:bold;">─── (太線)</span> : ノート間の直接紐付け (強い関連)<br>
-        <span style="color:#999;">─── (細線)</span> : 同一メモ内での共起 (通常の関連)
+        <span style="color:#d05a00; font-weight:bold;">─── (太線)</span> : テキストボックス間の直接紐付け または PDFハイライト紐付け (強い関連、重み5以上)<br>
+        <span style="color:#999;">─── (細線)</span> : 同一メモ内での共起 (通常の関連、重み1)
     </p>
     
     <div id="graphArea" 
@@ -303,8 +314,58 @@ export function renderGraphView() {
   const graphArea = document.getElementById("graphArea");
   const linkInfoList = document.getElementById("linkInfoList");
 
-  // --- 💡 ここから描画ロジックの変更点 ---
+  // テキストボックスIDからメモデータを引けるマップを作成
+  const memoIdMap = new Map(allMemoData.map(item => [item.id, item]));
 
+  linkInfoList.innerHTML = '<h3>紐付け情報一覧</h3>'; // タイトルを上書き
+
+  allMemoData.forEach(item => {
+    // 紐付け情報を持つアイテムのみをフィルタリング
+    if (item.linkedNoteId || item.isLinkedToPDF) {
+      const linkDetail = document.createElement('p');
+      linkDetail.style.borderBottom = '1px dotted #ccc';
+      linkDetail.style.padding = '5px 0';
+      linkDetail.style.margin = '0';
+
+      const MAX_LENGTH = 30;
+
+      // 紐付け元のメモのコンテンツの最初の部分を表示（テキストボックスかハイライトか）
+      const sourceText = item.content || item.linkedText;
+      const sourceSnippet = sourceText.substring(0, MAX_LENGTH).trim();
+      const sourceEllipsis = sourceText.length > MAX_LENGTH ? '...' : ''; // 💡 文字数を超えた場合のみ '...' を付加
+
+      let info = `<strong>紐付け元 ID: ${item.id}</strong> (${sourceSnippet}${sourceEllipsis})<br>`; // 💡 sourceEllipsisを使用
+
+      if (item.linkedNoteId) {
+        const linkedItem = memoIdMap.get(item.linkedNoteId);
+        let targetSnippet = '（コンテンツ不明）';
+        let targetEllipsis = '';
+
+        if (linkedItem) {
+          const targetText = linkedItem.content;
+          // 紐付け先のコンテンツの一部を取得して表示に追加
+          targetSnippet = targetText.substring(0, MAX_LENGTH).trim();
+          targetEllipsis = targetText.length > MAX_LENGTH ? '...' : ''; // 💡 文字数を超えた場合のみ '...' を付加
+        }
+        // 💡 紐付け先 ID の後にコンテンツを追加
+        info += `🔗 テキストボックス間紐付け先 ID: <span style="color:#d05a00;">${item.linkedNoteId}</span> (内容: ${targetSnippet}${targetEllipsis})<br>`; // 💡 targetEllipsisを使用
+      }
+
+      if (item.isLinkedToPDF) {
+        const PDF_MAX_LENGTH = 50;
+        const pdfText = item.linkedText;
+        const pdfSnippet = pdfText.substring(0, PDF_MAX_LENGTH);
+        const pdfEllipsis = pdfText.length > PDF_MAX_LENGTH ? '...' : '';
+
+        info += `📄 PDFハイライト: <span style="color:#2a66b9;">${pdfSnippet}${pdfEllipsis}</span> (P.${item.page})`; // 💡 pdfEllipsisを使用
+      }
+
+      linkDetail.innerHTML = info;
+      linkInfoList.appendChild(linkDetail);
+    }
+  });
+
+  // --- 💡 ここから描画ロジックの変更点 ---
   // A. 座標の事前計算
   const center = { x: 50, y: 50 }; // %指定
   const nodeCoordinates = new Map(); // 用語 -> {x, y}
@@ -353,7 +414,7 @@ export function renderGraphView() {
       line.setAttribute("y2", `${targetCoord.y}%`);
 
       // スタイルの設定 (重みによって変える)
-      const isStrong = link.weight >= 5; // ノート間紐付けがある場合
+      const isStrong = link.weight >= 5; // テキストボックス間紐付けがある場合
 
       line.setAttribute("stroke", isStrong ? "#ff8c00" : "#bbb"); // 色
       line.setAttribute("stroke-width", isStrong ? "3" : "1");    // 太さ
@@ -424,7 +485,7 @@ export function renderGraphView() {
   // E. 関連情報リストの表示 (既存ロジック維持)
   if (links.length > 0) {
     links.sort((a, b) => b.weight - a.weight).forEach(link => {
-      // 💡 【変更】リスト表示時も、ノイズノードが含まれるリンクはスキップ
+      // 💡 【変更】リスト表示時も、ノイズノードが含まれる紐付けはスキップ
       if (NODES_TO_HIDE.has(link.source) || NODES_TO_HIDE.has(link.target)) {
         return;
       }

@@ -90,7 +90,7 @@ function getOrCreateTopicViewContainer() {
   mainTitle.style.marginBottom = '20px';
   container.appendChild(mainTitle);
 
-  // ノート内容を描画するためのコンテナを追加
+  // テキストボックス内容を描画するためのコンテナを追加
   const topicContent = document.createElement('div');
   topicContent.id = 'topicContent';
   container.appendChild(topicContent);
@@ -176,10 +176,10 @@ export function renderTopicView(containerElement) {
       // テキストボックスに属性が設定されている場合、その属性キーをそのまま使用
       attributeKey = noteAttribute.toUpperCase();
     } else if (hasLinkedText || linkedNoteId) {
-      // 属性がなく、紐付けがあるノートも「要点」扱い (PDF or ノート間)
+      // 属性がなく、紐付けがあるテキストボックスも「要点」扱い (PDF or テキストボックス間)
       attributeKey = 'CORE_INSIGHTS_LINKED_NOTE';
     } else {
-      // それ以外の普通のノート
+      // それ以外の普通のテキストボックス
       attributeKey = 'OTHER_NOTE';
     }
 
@@ -247,7 +247,7 @@ export function renderTopicView(containerElement) {
   allMemoData.forEach(item => {
     let finalAttributeKey = item.attributeKey;
 
-    // ⭐️ 属性に関わらず、紐付けされたノートは要点グループに分類する ⭐️
+    // ⭐️ 属性に関わらず、紐付けされたテキストボックスは要点グループに分類する ⭐️
     if (item.isLinked && item.type === 'note') {
       finalAttributeKey = 'CORE_INSIGHTS_LINKED_NOTE';
     }
@@ -271,7 +271,7 @@ function getAttributeDetails(key) {
   switch (key) {
     // 要点（黄色）
     case 'CORE_INSIGHTS_HIGHLIGHT': return { name: '要点（ハイライト）', color: '#ffc107' };
-    case 'CORE_INSIGHTS_LINKED_NOTE': return { name: '要点（紐付けノート）', color: '#ffc107' };
+    case 'CORE_INSIGHTS_LINKED_NOTE': return { name: '要点（紐付けテキストボックス）', color: '#ffc107' };
 
     // 補足（水色）
     case 'DETAIL': return { name: '補足', color: '#4a90e2' };
@@ -294,7 +294,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
   // 属性の表示順の定義
   const attributeOrder = [
     'CORE_INSIGHTS_HIGHLIGHT', // 要点（ハイライト）
-    'CORE_INSIGHTS_LINKED_NOTE', // 要点（紐付けノート）
+    'CORE_INSIGHTS_LINKED_NOTE', // 要点（紐付けテキストボックス）
     'DETAIL', // 補足
     'QUESTION', // 疑問
     'REFLECTION', // 考え
@@ -362,39 +362,39 @@ function drawAttributeGroupedData(targetElement, dataMap) {
               contextNote = `<strong>➔</strong> ${item.content}`;
             }
 
-            // PDF紐付けの有無にかかわらず、ノート間紐付けが存在する場合に処理
+            // PDF紐付けの有無にかかわらず、テキストボックス間紐付けが存在する場合に処理
             if (item.linkedNoteId) {
               const targetNoteElement = document.querySelector(`.note[data-id="${item.linkedNoteId}"]`);
               const targetNoteContent = targetNoteElement ? targetNoteElement.textContent.trim() : '';
               const maxLen = 50;
 
               if (item.linkedText) {
-                // PDF紐付けとノート間紐付けが両方ある場合: 考察に追加
+                // PDF紐付けとテキストボックス間紐付けが両方ある場合: 考察に追加
                 let noteLinkInfo = '';
                 if (targetNoteContent) {
                   const targetSnippet = targetNoteContent.substring(0, maxLen) + (targetNoteContent.length > maxLen ? '...' : '');
                   noteLinkInfo = ` [🔗 関連ノート: ${targetSnippet}]`;
                 } else {
-                  noteLinkInfo = ` [関連ノート (${item.linkedNoteId}) は削除されました]`;
+                  noteLinkInfo = ` [関連テキストボックス (${item.linkedNoteId}) は削除されました]`;
                 }
                 contextNote = `${contextNote}${noteLinkInfo}`;
 
               } else {
-                // ノート間紐付けのみの場合: これがメイン情報となる
+                // テキストボックス間紐付けのみの場合: これがメイン情報となる
                 const currentSnippet = item.content.substring(0, maxLen) + (item.content.length > maxLen ? '...' : '');
 
                 if (targetNoteContent) {
                   const targetSnippet = targetNoteContent.substring(0, maxLen) + (targetNoteContent.length > maxLen ? '...' : '');
-                  contextText = `${currentSnippet} (ノートリンク先)`;
+                  contextText = `${currentSnippet} (テキストボックスリンク先)`;
                   contextNote = `<strong>➔ </strong>${targetSnippet}`;
                 } else {
-                  contextText = `ノートリンク元: ${currentSnippet}`;
-                  contextNote = `<strong></strong> リンク先ノート (ID: ${item.linkedNoteId}) は削除されました`;
+                  contextText = `テキストボックスリンク元: ${currentSnippet}`;
+                  contextNote = `<strong></strong> リンク先テキストボックス (ID: ${item.linkedNoteId}) は削除されました`;
                 }
               }
             }
 
-            // 1.2 紐付け付きノート (考察) - 文脈を太字、ノートを薄く表示
+            // 1.2 紐付け付きテキストボックス (考察) - 文脈を太字、ノートを薄く表示
             // 💡 修正済み: contextText/contextNote を使用し、不要な改行を削除
             itemContentHTML = `
                             <p style="margin:0;">
@@ -411,7 +411,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
                         `;
           }
         } else { // 新しい属性 (DETAIL, QUESTION, REFLECTION, OTHER) と OTHER_NOTE の処理
-          // 2. その他のノート、または属性付きのノート
+          // 2. その他のテキストボックス、または属性付きのテキストボックス
           itemContentHTML = `<strong>・ </strong> ${item.content} <span style="font-size: 0.8em; color: #888;">(P.${item.page})</span>`;
         }
 
@@ -618,6 +618,6 @@ function drawKeyTopicSection(targetElement, keyTopics) {
 
   keyTopicSection.appendChild(topicList);
 
-  // ノートセクションの前に挿入
+  // テキストボックスセクションの前に挿入
   targetElement.insertBefore(keyTopicSection, targetElement.firstChild);
 }
