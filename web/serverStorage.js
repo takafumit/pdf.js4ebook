@@ -7,7 +7,7 @@ import { select, FREEHAND_KEY } from './noteExtension.js';
 import { enableDrag, enableResize, commit, saveAllNotes, showNoteTextStylePalette } from './noteMode.js';
 import { toggleHighlightSelection } from './highlightMode.js';
 import { updateNotePositions, showLinkStatus } from './annotationManager.js';
-import { freehandMode, restoreFreehands } from './freehandMode.js';
+import { restoreFreehands } from './freehandMode.js';
 
 /* ---------- グローバル設定 ---------- */
 const pdfId = PDFViewerApplication?.url?.split("/").pop() ?? "untitled.pdf";
@@ -28,6 +28,25 @@ function saveNotesToServer() {
     const pageView = PDFViewerApplication.pdfViewer.getPageView(page - 1);
     const vp = pageView.viewport;
 
+    // 💡 【修正点】改行を保持するために innerHTML を使って \n に変換する
+    const noteText = note.innerHTML
+      // 1. リサイズハンドルを削除
+      .replace(/<div class="note-resize-handle"><\/div>/gi, '')
+
+      // 2. <br> タグを \n に変換 (念のため)
+      .replace(/<br\s*\/?>/gi, '\n')
+
+      // 3. <div> や <p> の開始タグを \n に変換 (主な改行の原因)
+      .replace(/<div.*?>|<p.*?>/gi, '\n')
+
+      // 4. 連続する \n を一つにまとめる
+      .replace(/\n{2,}/g, '\n')
+
+      // 5. <div> や <p> の閉じタグを削除
+      .replace(/<\/div>|<\/p>/gi, '')
+
+      .trim();
+
     return {
       id: note.dataset.id,
       page,
@@ -37,7 +56,7 @@ function saveNotesToServer() {
       w: parseFloat(note.style.width) / vp.scale,
       h: parseFloat(note.style.height) / vp.scale,
 
-      text: note.textContent,
+      text: noteText,
       bubbleAttached: note.dataset.bubbleAttached === "true",
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
@@ -98,7 +117,11 @@ function restoreNotesFromData(notes) {
     const note = document.createElement("div");
     note.className = "note";
     note.contentEditable = "true";
-    note.textContent = n.text;
+    const textBlocks = n.text.split('\n');
+    const restoredHtml = textBlocks
+      .map(block => `<div>${block || '<br>'}</div>`) // 空のブロックには<br>を入れて高さを確保
+      .join('');
+    note.innerHTML = restoredHtml;
 
     // dataset に linkedText などをコピー
     Object.assign(note.dataset, n);

@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-const PDF_PATH = "../../web/compressed.tracemonkey-pldi-09.pdf";
+const PDF_PATH = "../../web/ymmtTest.pdf";
 const PAGE_NUMBER = 1;
 const PAGE_SCALE = 1.5;
 const SVG_NS = "http://www.w3.org/2000/svg";

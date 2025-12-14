@@ -26,7 +26,7 @@ const STANDARD_FONT_DATA_URL =
 
 // Loading file from file system into typed array.
 const pdfPath =
-  process.argv[2] || "../../../web/compressed.tracemonkey-pldi-09.pdf";
+  process.argv[2] || "../../../web/ymmtTest.pdf";
 const data = new Uint8Array(fs.readFileSync(pdfPath));
 
 // Load the PDF file.

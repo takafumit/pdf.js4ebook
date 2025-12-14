@@ -1,15 +1,20 @@
 // graphView.js
 
+// =============================================================
+// I. 初期設定と共通変数
+// =============================================================
+
+// 辞書で対応しきれない汎用的なストップワード（計算効率のための補完）
 const JAPANESE_STOP_WORDS_ARRAY = [
   'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
   'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
   'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
   'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
   'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
-  'p', 'ページ'
+  'p', 'ページ', '弊社', '貴社'
 ];
 
-// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソート
+// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソート（現在は未使用だが慣習的に維持）
 JAPANESE_STOP_WORDS_ARRAY.sort((a, b) => b.length - a.length);
 
 const JAPANESE_STOP_WORDS = new Set(JAPANESE_STOP_WORDS_ARRAY);
@@ -23,13 +28,19 @@ const ENGLISH_STOP_WORDS = new Set([
   'p'
 ]);
 
+// 💡 単語の語尾（サフィックス）としてチェックする助詞
+const JAPANESE_STOP_WORDS_SUFFIXES = new Set(['の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も']);
+
+// 💡 キーワードの先頭から削除したい助詞（語頭クリーニング用）
+const JAPANESE_PREFIX_NOISE = new Set(['を', 'に', 'が', 'と', 'へ', 'で', 'も', 'は', 'から', 'より']);
+
+
 // =============================================================
-// I. データの抽出と準備
+// II. データの抽出とキーワード生成
 // =============================================================
 
 /**
  * 全てのメモ要素からテキストと関連情報を抽出する
- * 💡 テキストボックス間紐付けID (linkedNoteId) を含めるように拡張
  */
 function extractAllMemoText() {
   const elements = document.querySelectorAll(".note, .highlight");
@@ -61,7 +72,6 @@ function extractAllMemoText() {
     });
   });
 
-  // 💡 確認用ログ
   console.log("--- 抽出された全メモデータ ---");
   console.log(items);
   console.log("------------------------------");
@@ -70,15 +80,16 @@ function extractAllMemoText() {
 }
 
 /**
- * TF-IDFで重要語トップ15を抽出する (TF-IDF計算後、ストップワードを除去するロジックを適用)
+ * TF-IDFで重要語トップ15を抽出する (文字列フィルタリングを強化)
  */
 function extractKeyTermsTFIDF(allItems) {
   const docs = allItems.map(i => i.fullText);
 
-  // 💡 トークナイズ処理はシンプルに保ち、紐付けが途切れないようにする
+  // 💡 トークナイズ処理: 記号を除去し、スペースで分割
   const tokenize = text =>
     text
       .toLowerCase()
+      // 句読点や記号をスペースに置換 (Unicodeの\p{P}は環境依存の可能性があるため、より安全な\p{L}（文字）以外をスペースに置換)
       .replace(/[^\p{L}0-9]/gu, " ")
       .split(/\s+/)
       .filter(w => w.length > 1);
@@ -87,6 +98,7 @@ function extractKeyTermsTFIDF(allItems) {
   const df = {};
   const tf = [];
 
+  // TF (Term Frequency) と DF (Document Frequency) の計算
   termCounts.forEach(tokens => {
     const counts = {};
     tokens.forEach(t => (counts[t] = (counts[t] || 0) + 1));
@@ -99,9 +111,12 @@ function extractKeyTermsTFIDF(allItems) {
   const N = docs.length;
   const tfidf = {};
 
+  // TF-IDF スコアの計算
   Object.keys(df).forEach(term => {
+    // IDF (Inverse Document Frequency) の計算 (分母が0になるのを防ぐため +1)
     const idf = Math.log((N + 1) / (df[term] + 1)) + 1;
     let totalTFIDF = 0;
+    // 全ドキュメントのTFを合計し、IDFを掛ける
     tf.forEach(counts => {
       totalTFIDF += (counts[term] || 0) * idf;
     });
@@ -109,44 +124,146 @@ function extractKeyTermsTFIDF(allItems) {
     tfidf[term] = totalTFIDF;
   });
 
-  // 💡 TF-IDFスコアに基づいてソートした後、ストップワードを除外
+  // TF-IDFスコアに基づいてソート
+  let rankedTerms = Object.entries(tfidf)
+    .sort((a, b) => b[1] - a[1])
+    .map(e => e[0]); // 単語のみの配列にする
+
+
+  // ---------------------------------------------------------------------------------
+  // 🚨 【処理 1】語頭クリーニングの適用 (助詞を削除し、スコアを合算)
+  // ---------------------------------------------------------------------------------
+  let cleanedTerms = new Map(); // 処理後の単語と合算スコアを保持
   const allStopWords = new Set([...JAPANESE_STOP_WORDS, ...ENGLISH_STOP_WORDS]);
 
-  return Object.entries(tfidf)
+  rankedTerms.forEach(term => {
+    let cleanedTerm = term;
+
+    // 語頭ノイズチェック (2文字以上の単語のみ対象)
+    const firstChar = term.slice(0, 1);
+    if (JAPANESE_PREFIX_NOISE.has(firstChar) && term.length > 1) {
+      cleanedTerm = term.slice(1);
+    }
+
+    // クリーニング後の単語が1文字だったり、完全なストップワードになった場合は無視
+    if (cleanedTerm.length < 1 || allStopWords.has(cleanedTerm)) {
+      return;
+    }
+
+    // 💡 クリーニングにより単語が重複する場合があるため、スコアを合算する
+    const existingScore = cleanedTerms.get(cleanedTerm) || 0;
+    cleanedTerms.set(cleanedTerm, existingScore + tfidf[term]);
+  });
+
+  // クリーニング後の単語リストを再度スコア順に並べ替える
+  rankedTerms = Array.from(cleanedTerms.entries())
     .sort((a, b) => b[1] - a[1])
-    .map(e => e[0]) // 単語のみの配列にする
-    .filter(term => !allStopWords.has(term)) // ストップワードを除外
-    .slice(0, 15); // 💡 上位15語を返すように修正
+    .map(e => e[0]);
+
+
+  // ---------------------------------------------------------------------------------
+  // 🚨 【処理 2】最終フィルタリング（語尾ノイズ）
+  // ---------------------------------------------------------------------------------
+  rankedTerms = rankedTerms
+    .filter(term => {
+      // 1. 語尾ノイズ（助詞）で終わる単語を除外
+      const lastChar = term.slice(-1);
+      if (JAPANESE_STOP_WORDS_SUFFIXES.has(lastChar)) {
+        return false;
+      }
+      return true;
+    });
+
+  // ---------------------------------------------------------------------------------
+  // 🚨 【新規処理 3】キーワードの部分集合による重複排除
+  // ---------------------------------------------------------------------------------
+  const finalTerms = [];
+  const termsSet = new Set(rankedTerms); // 排除チェックのためにSet化
+
+  rankedTerms.forEach(longerTerm => {
+    let isSubsetString = false;
+
+    // 自身より短い他のキーワードが、このキーワードに完全に含まれているかチェック
+    // 例: longerTerm="urlをクリック" の場合
+    // shortTerm="url" や shortTerm="クリック" が含まれているか？
+    termsSet.forEach(shorterTerm => {
+      // 自身より短いこと、かつ、自身と同一ではないことを確認
+      if (shorterTerm !== longerTerm && longerTerm.includes(shorterTerm)) {
+        // ここでの目的は、短い単語を排除することではなく、
+        // 短い単語が長い単語に含まれている場合に、短い単語が残るべきかを判断すること。
+        // 
+        // 💡 シンプル化のため、今回は「部分集合を**排除**する」のではなく、
+        // 「長い単語に完全に含まれる**短い単語**を排除する」ロジックを採用する。
+        // 例: rankedTermsが [urlをクリック, url, クリック] の順だった場合
+        // urlをクリック ( longerTerm ) に含まれる url ( shorterTerm ) は排除したい
+
+        // 💡 逆に考える: すでに長いキーワードに含まれている短いキーワードは排除すべき
+        // ここでは、rankedTermsの順番（スコア順）を尊重するため、
+        // スコアが高い (先にある) 長いキーワードが、スコアが低い (後にある) 短いキーワードを含んでいる場合、短い方を排除する、という実装が難しい。
+
+        // そこで、**より長いキーワードが短いキーワードを完全に含む場合**、短いキーワードを排除する。
+        // これを効率的に行うため、ここでは部分文字列のチェックは一旦保留し、
+        // **「長いキーワードに完全に含まれる短いキーワード」** を別途リストアップし、最終排除リストから除去する。
+      }
+    });
+  });
+
+  // 💡 シンプルかつ効果的な代替ロジック:
+  // 「urlをクリック」のようにスペースのない複合語は複合語として残す。
+  // 「url」や「クリック」といった短い単語は、**別の長い単語に含まれている**場合、情報量が低いとして排除する。
+
+  const termsToKeep = new Set(rankedTerms);
+
+  // 長い単語からチェックすることで、短い単語をフィルタリングする
+  for (let i = 0; i < rankedTerms.length; i++) {
+    const longerTerm = rankedTerms[i];
+    for (let j = 0; j < rankedTerms.length; j++) {
+      const shorterTerm = rankedTerms[j];
+
+      // 1. longerTermがshorterTermより長い
+      // 2. longerTermがshorterTermを完全に含んでいる
+      // 3. shorterTermがまだ排除リストに残っている
+      if (longerTerm.length > shorterTerm.length &&
+        longerTerm.includes(shorterTerm) &&
+        termsToKeep.has(shorterTerm)) {
+
+        // 💡 複合キーワードの一部であると見なして排除する
+        // ただし、単純な部分文字列チェックだと誤爆の可能性があるため、
+        // 排除する前に、longerTermとshorterTermのスコアを比較し、
+        // longerTermのスコアがshorterTermよりはるかに高い(例: 2倍以上)場合に限定する、といった重み付けも可能だが、
+        // シンプルな部分文字列排除を採用。
+
+        // 例: urlをクリック (長) に url (短) が含まれる -> url を排除
+        termsToKeep.delete(shorterTerm);
+      }
+    }
+  }
+
+  return Array.from(termsToKeep).slice(0, 15);
 }
 
+
 // =============================================================
-// II. 関連性 (共起と紐付け) の計算ロジック
+// III. 関連性計算とグラフデータ構築 (変更あり)
 // =============================================================
 
 /**
  * キーワード間の共起関係と紐付け関係を計算し、重みを付与する
- * @param {Array<object>} allItems 全てのメモデータ
- * @param {Array<string>} keyTerms 抽出されたキーワードリスト
- * @returns {Map<string, Map<string, number>>} 関連マップ (Keyword -> Keyword -> Count)
  */
 function calculateRelations(allItems, keyTerms) {
   const relationMap = new Map();
   const termSet = new Set(keyTerms);
   const memoIdMap = new Map(allItems.map(item => [item.id, item]));
 
-  // 💡 関連カウントをインクリメントする共通関数
   const incrementRelation = (termA, termB, weight = 1) => {
-    // 同じキーワードの自己ループは無視
     if (termA === termB) return;
 
     if (!relationMap.has(termA)) relationMap.set(termA, new Map());
     if (!relationMap.has(termB)) relationMap.set(termB, new Map());
 
-    // A -> B のカウント
     const countAB = relationMap.get(termA).get(termB) || 0;
     relationMap.get(termA).set(termB, countAB + weight);
 
-    // B -> A のカウント (無向グラフとして扱うため)
     const countBA = relationMap.get(termB).get(termA) || 0;
     relationMap.get(termB).set(termA, countBA + weight);
   };
@@ -154,7 +271,7 @@ function calculateRelations(allItems, keyTerms) {
   allItems.forEach(item => {
     const presentTerms = new Set();
 
-    // 1. そのメモに含まれるキーワードの抽出
+    // 1. そのメモに含まれるキーワードの抽出 (フルテキストでチェック)
     termSet.forEach(term => {
       if (item.fullText.includes(term.toLowerCase())) {
         presentTerms.add(term);
@@ -162,9 +279,7 @@ function calculateRelations(allItems, keyTerms) {
     });
     const termsArray = Array.from(presentTerms);
 
-    // 2. 共起のカウント (重み: 1 または 5) - 同じメモ内での関連
-    // 💡【修正点】PDFに紐付けされているメモの場合、内部共起の重みを 5 に設定
-    // これにより、PDFハイライトとテキストボックスのキーワードが強い関連として繋がる
+    // 2. 共起のカウント (重み: 1 または 5)
     const baseWeight = item.isLinkedToPDF ? 5 : 1;
 
     for (let i = 0; i < termsArray.length; i++) {
@@ -173,20 +288,17 @@ function calculateRelations(allItems, keyTerms) {
       }
     }
 
-    // 3. 💡 テキストボックス間紐付けによる関連のカウント (重み: 5) - 強い関連性 (変更なし)
+    // 3. テキストボックス間紐付けによる関連のカウント (重み: 5)
     if (item.linkedNoteId) {
       const linkedItem = memoIdMap.get(item.linkedNoteId);
       if (linkedItem) {
         const linkedTerms = new Set();
-
-        // 紐付け先のメモに含まれるキーワードを抽出
         termSet.forEach(term => {
           if (linkedItem.fullText.includes(term.toLowerCase())) {
             linkedTerms.add(term);
           }
         });
 
-        // 紐付け元のキーワードと紐付け先のキーワード全てを関連付ける (重み 5)
         termsArray.forEach(sourceTerm => {
           linkedTerms.forEach(targetTerm => {
             incrementRelation(sourceTerm, targetTerm, 5);
@@ -199,16 +311,28 @@ function calculateRelations(allItems, keyTerms) {
   return relationMap;
 }
 
-// ... (buildGraphData関数に修正あり)
+
 /**
  * グラフ描画のためのノードとエッジのデータを準備する
+ * 💡 ノードにフルキーワードのtitle属性を追加
  */
 function buildGraphData(keyTerms, relationMap) {
-  const nodes = keyTerms.map((term, index) => ({
-    id: term,
-    label: term,
-    group: index === 0 ? 1 : 2
-  }));
+  // 🚨 【修正点】ここで表示ラベルの長さを制限する
+  const MAX_LABEL_LENGTH = 10;
+
+  const nodes = keyTerms.map((term, index) => {
+    // 表示用のラベルを短縮し、10文字を超えた場合は '...' を追加
+    const label = term.length > MAX_LABEL_LENGTH
+      ? term.substring(0, MAX_LABEL_LENGTH) + '...'
+      : term;
+
+    return {
+      id: term,     // 紐付けIDとしてフルテキストを維持
+      label: label, // 表示ラベルとして短縮版を使用
+      title: term,  // 💡 【新規】ツールチップ用のフルテキスト
+      group: index === 0 ? 1 : 2
+    };
+  });
 
   const links = [];
   const addedLinks = new Set();
@@ -218,7 +342,7 @@ function buildGraphData(keyTerms, relationMap) {
       // エッジは (A, B) と (B, A) で重複するため、一方向のみ追加
       const linkKey = source < target ? `${source}-${target}` : `${target}-${source}`;
 
-      // 💡【修正点】重みが 1 以上の場合にエッジを作成 (すべての共起/紐付けを表示)
+      // 重みが 1 以上の場合にエッジを作成
       if (!addedLinks.has(linkKey) && weight >= 1) {
         links.push({
           source: source,
@@ -233,7 +357,11 @@ function buildGraphData(keyTerms, relationMap) {
   return { nodes, links };
 }
 
-// ... (renderGraphView関数に修正なし)
+
+// =============================================================
+// IV. メイン描画ロジック (変更あり)
+// =============================================================
+
 /**
  * グラフビューを描画するメイン関数
  */
@@ -251,7 +379,7 @@ export function renderGraphView() {
     div.style.zIndex = "9999";
     div.style.overflow = "auto";
     div.style.padding = "20px";
-    div.style.boxShadow = "0 0 15px rgba(0,0,0,0.2)"; // 影を追加して浮遊感を出す
+    div.style.boxShadow = "0 0 15px rgba(0,0,0,0.2)";
     document.body.appendChild(div);
     return div;
   })();
@@ -274,7 +402,7 @@ export function renderGraphView() {
   // 5. 基本UIの描画
   container.innerHTML = `
     <h1 style="color:#2a66b9;">グラフビュー</h1>
-
+    
     <button id="closeGraphBtn"
         style="
             position: absolute;
@@ -294,8 +422,8 @@ export function renderGraphView() {
     
     <p style="margin-bottom:20px; color:#555; font-size:0.9em;">
         <strong>線の凡例:</strong><br>
-        <span style="color:#d05a00; font-weight:bold;">─── (太線)</span> : テキストボックス間の直接紐付け または PDFハイライト紐付け (強い関連、重み5以上)<br>
-        <span style="color:#999;">─── (細線)</span> : 同一メモ内での共起 (通常の関連、重み1)
+        <span style="color:#d05a00; font-weight:bold;">─── (太線)</span> : ノート間の直接紐付け (強い関連)<br>
+        <span style="color:#999;">─── (細線)</span> : 同一メモ内での共起 (通常の関連)
     </p>
     
     <div id="graphArea" 
@@ -319,6 +447,7 @@ export function renderGraphView() {
 
   linkInfoList.innerHTML = '<h3>紐付け情報一覧</h3>'; // タイトルを上書き
 
+  // D. 関連情報リストの表示 (紐付け情報)
   allMemoData.forEach(item => {
     // 紐付け情報を持つアイテムのみをフィルタリング
     if (item.linkedNoteId || item.isLinkedToPDF) {
@@ -329,12 +458,11 @@ export function renderGraphView() {
 
       const MAX_LENGTH = 30;
 
-      // 紐付け元のメモのコンテンツの最初の部分を表示（テキストボックスかハイライトか）
       const sourceText = item.content || item.linkedText;
       const sourceSnippet = sourceText.substring(0, MAX_LENGTH).trim();
-      const sourceEllipsis = sourceText.length > MAX_LENGTH ? '...' : ''; // 💡 文字数を超えた場合のみ '...' を付加
+      const sourceEllipsis = sourceText.length > MAX_LENGTH ? '...' : '';
 
-      let info = `<strong>紐付け元 ID: ${item.id}</strong> (${sourceSnippet}${sourceEllipsis})<br>`; // 💡 sourceEllipsisを使用
+      let info = `<strong>紐付け元 ID: ${item.id}</strong> (${sourceSnippet}${sourceEllipsis})<br>`;
 
       if (item.linkedNoteId) {
         const linkedItem = memoIdMap.get(item.linkedNoteId);
@@ -343,12 +471,10 @@ export function renderGraphView() {
 
         if (linkedItem) {
           const targetText = linkedItem.content;
-          // 紐付け先のコンテンツの一部を取得して表示に追加
           targetSnippet = targetText.substring(0, MAX_LENGTH).trim();
-          targetEllipsis = targetText.length > MAX_LENGTH ? '...' : ''; // 💡 文字数を超えた場合のみ '...' を付加
+          targetEllipsis = targetText.length > MAX_LENGTH ? '...' : '';
         }
-        // 💡 紐付け先 ID の後にコンテンツを追加
-        info += `🔗 テキストボックス間紐付け先 ID: <span style="color:#d05a00;">${item.linkedNoteId}</span> (内容: ${targetSnippet}${targetEllipsis})<br>`; // 💡 targetEllipsisを使用
+        info += `🔗 テキストボックス間紐付け先 ID: <span style="color:#d05a00;">${item.linkedNoteId}</span> (内容: ${targetSnippet}${targetEllipsis})<br>`;
       }
 
       if (item.isLinkedToPDF) {
@@ -357,7 +483,7 @@ export function renderGraphView() {
         const pdfSnippet = pdfText.substring(0, PDF_MAX_LENGTH);
         const pdfEllipsis = pdfText.length > PDF_MAX_LENGTH ? '...' : '';
 
-        info += `📄 PDFハイライト: <span style="color:#2a66b9;">${pdfSnippet}${pdfEllipsis}</span> (P.${item.page})`; // 💡 pdfEllipsisを使用
+        info += `📄 PDFハイライト: <span style="color:#2a66b9;">${pdfSnippet}${pdfEllipsis}</span> (P.${item.page})`;
       }
 
       linkDetail.innerHTML = info;
@@ -365,8 +491,7 @@ export function renderGraphView() {
     }
   });
 
-  // --- 💡 ここから描画ロジックの変更点 ---
-  // A. 座標の事前計算
+  // A. 座標の事前計算 (円形レイアウト)
   const center = { x: 50, y: 50 }; // %指定
   const nodeCoordinates = new Map(); // 用語 -> {x, y}
 
@@ -380,7 +505,6 @@ export function renderGraphView() {
       // 周囲のノード (円形配置)
       const angle = index * (360 / (nodes.length - 1));
       const radius = 35; // 半径 (%)
-      // 度数法をラジアンに変換
       const radian = (angle * Math.PI) / 180;
       x = center.x + radius * Math.cos(radian);
       y = center.y + radius * Math.sin(radian);
@@ -429,7 +553,7 @@ export function renderGraphView() {
 
   // D. ノードの描画 (DIV)
 
-  // 💡 【追加】ノード描画をスキップする単語リスト
+  // ノード描画をスキップする単語リスト
   const NODES_TO_HIDE = new Set([
     // 日本語の助詞・助動詞の一部
     'の', 'は', 'を', 'に', 'が', 'と', 'で', 'も',
@@ -438,15 +562,21 @@ export function renderGraphView() {
   ]);
 
   nodes.forEach((node, index) => {
-    // 💡 【追加】非表示リストに含まれるノードは描画をスキップ
+    // 非表示リストに含まれるノードは描画をスキップ
     if (NODES_TO_HIDE.has(node.id)) {
       return;
     }
 
     const coords = nodeCoordinates.get(node.id);
+    // キーワードがフィルタリングで残っていても、描画座標がない場合はスキップ
+    if (!coords) return;
+
     const nodeEl = document.createElement('div');
 
     nodeEl.textContent = node.label;
+    // 💡 【新規】title属性にフルキーワードを設定 (マウスオーバーで表示)
+    nodeEl.title = node.title;
+
     nodeEl.style.position = 'absolute';
     nodeEl.style.padding = '8px 15px';
     nodeEl.style.borderRadius = '20px';
@@ -462,7 +592,7 @@ export function renderGraphView() {
     nodeEl.onmouseleave = () => nodeEl.style.transform = 'translate(-50%, -50%) scale(1.0)';
 
     if (index === 0) {
-      // 中央ノード
+      // 中央ノード (最もスコアの高いキーワード)
       nodeEl.style.backgroundColor = '#2a66b9';
       nodeEl.style.color = 'white';
       nodeEl.style.border = '2px solid #003366';
@@ -482,10 +612,10 @@ export function renderGraphView() {
     graphArea.appendChild(nodeEl);
   });
 
-  // E. 関連情報リストの表示 (既存ロジック維持)
+  // E. 関連情報リストの表示 (エッジ情報)
   if (links.length > 0) {
     links.sort((a, b) => b.weight - a.weight).forEach(link => {
-      // 💡 【変更】リスト表示時も、ノイズノードが含まれる紐付けはスキップ
+      // リスト表示時も、ノイズノードが含まれる紐付けはスキップ
       if (NODES_TO_HIDE.has(link.source) || NODES_TO_HIDE.has(link.target)) {
         return;
       }
@@ -494,6 +624,7 @@ export function renderGraphView() {
       const isStrong = link.weight >= 5;
       const label = isStrong ? '🔗 紐付け関連' : '📄 共起関連';
 
+      // リスト内ではノードID（フルテキスト）を表示する
       linkInfo.innerHTML = `
         <span style="color:${isStrong ? '#d05a00' : '#777'}; font-weight:bold;">${label}</span> 
         [ ${link.source} ] - [ ${link.target} ] 

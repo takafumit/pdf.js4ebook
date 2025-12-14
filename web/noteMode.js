@@ -285,18 +285,38 @@ function saveAllNotes() {
 
     if (!note.dataset.id) note.dataset.id = `note-${Date.now()}`;
 
+    // 💡 【修正点】innerHTMLを取得し、HTMLの改行要素を \n に変換
+    console.log(note.innerHTML);
+    const noteText = note.innerHTML
+      // 1. リサイズハンドルを削除 (テキストとして保存しないため)
+      .replace(/<div class="note-resize-handle"><\/div>/gi, '')
+
+      // 2. <br> タグを \n に変換 (念のため)
+      .replace(/<br\s*\/?>/gi, '\n')
+
+      // 3. <div> や <p> の開始タグを \n に変換
+      // → URLをクリックしたの直後にある <div> に対応
+      .replace(/<div.*?>|<p.*?>/gi, '\n')
+
+      // 4. 連続する \n を一つにまとめる
+      .replace(/\n{2,}/g, '\n')
+
+      // 5. <div> や <p> の閉じタグを削除 (開始タグで改行にしたため、閉じタグは不要)
+      .replace(/<\/div>|<\/p>/gi, '')
+
+      .trim();
+
     notes.push({
       id: note.dataset.id,
       page: pageNum,
       x, y, w, h,
-      text: note.textContent,
+      text: noteText,
       bubbleAttached: note.dataset.bubbleAttached === "true",
       fontSize: note.dataset.fontSize || "14",
       color: note.dataset.color || "black",
       linkedText: note.dataset.linkedText || "",
       attribute: note.dataset.attribute || "",
       linkedNoteId: note.dataset.linkedNoteId || "",
-      // 💡 座標情報も保存対象に追加
       linkedPage: note.dataset.linkedPage || "",
       linkedPdfX: note.dataset.linkedPdfX || "",
       linkedPdfY: note.dataset.linkedPdfY || "",
@@ -344,7 +364,6 @@ function cleanupLinksAfterDeletion(deletedNoteId) {
   });
   scheduleSave();
 }
-
 
 // 4. ⭐️【既存】紐付け中の線を表示するためのヘルパー関数 ⭐️
 
@@ -406,7 +425,6 @@ function removeLinkSVG() {
     state.linkStartNote = null;
   }
 }
-
 
 // ⭐️【修正】静的なリンク線を描画する関数（ノート間紐付け用） ⭐️
 /**
