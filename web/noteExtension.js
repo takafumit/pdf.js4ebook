@@ -262,36 +262,42 @@ function initFull() {
   document.addEventListener("keydown", e => {
     const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
 
-    if (e.key === "Delete" && state.selected) {
-      if (state.selected.classList.contains("note")) {
-        // ⭐️ 修正点: ノート削除前にクリーンアップを実行
-        const deletedId = state.selected.dataset.id;
-        if (deletedId) {
-          cleanupLinksAfterDeletion(deletedId);
-        }
-        // ------------------------------------
-        doOp(OP.delete(state.selected, state.selected.parentElement));
-        select(null);
-        const palette = document.getElementById("noteTextStylePalette");
-        if (palette) palette.remove();
-        saveAllNotes();
-      } else if (state.selected.classList.contains("highlight")) {
-        doOp(OP.delete(state.selected, state.selected.parentElement));
-        select(null);
-        saveAllHighlights();
-        hideNoteColorPalette();
-        hideHighlightColorPalette();
-      } else if (state.selected.classList.contains("freehand-group")) {
-        const group = state.selected;
-        const groupData = {
-          ...group.dataset,
-          paths: Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'))
-        };
-        doOp(OP.deleteFreehand(group, group.parentElement, groupData));
-        freehandMode.hideColorPalette();
-        select(null);
-      }
-    }
+    // if (e.key === "Delete" && state.selected) {
+    //   // 💡 修正点: テキスト入力要素（textarea, input, contenteditable）がターゲットの場合、
+    //   //            オブジェクト削除処理は実行せず、ブラウザ標準の文字削除に任せる。
+    //   if (e.target.matches('textarea, input, [contenteditable="true"]')) {
+    //     return;
+    //   }
+
+    //   if (state.selected.classList.contains("note")) {
+    //     // ⭐️ 修正点: ノート削除前にクリーンアップを実行
+    //     const deletedId = state.selected.dataset.id;
+    //     if (deletedId) {
+    //       cleanupLinksAfterDeletion(deletedId);
+    //     }
+    //     // ------------------------------------
+    //     doOp(OP.delete(state.selected, state.selected.parentElement));
+    //     select(null);
+    //     const palette = document.getElementById("noteTextStylePalette");
+    //     if (palette) palette.remove();
+    //     saveAllNotes();
+    //   } else if (state.selected.classList.contains("highlight")) {
+    //     doOp(OP.delete(state.selected, state.selected.parentElement));
+    //     select(null);
+    //     saveAllHighlights();
+    //     hideNoteColorPalette();
+    //     hideHighlightColorPalette();
+    //   } else if (state.selected.classList.contains("freehand-group")) {
+    //     const group = state.selected;
+    //     const groupData = {
+    //       ...group.dataset,
+    //       paths: Array.from(group.querySelectorAll('path')).map(p => p.getAttribute('d'))
+    //     };
+    //     doOp(OP.deleteFreehand(group, group.parentElement, groupData));
+    //     freehandMode.hideColorPalette();
+    //     select(null);
+    //   }
+    // }
 
     if (ctrl && k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
     if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
@@ -377,15 +383,17 @@ document.addEventListener("mouseup", (event) => { // event パラメータを追
     }
     // 2. 他のテキストボックスへのクリックによる紐付け (noteMode.js のロジックと重複を避けるため、ここではノート間紐付けを処理しない)
     else {
-      const clickedElement = event.target;
+      // 💡 【修正点】クリックされた要素から親要素を遡って最も近い .note を探す
       const startNote = state.linkingNote;
+      // クリックされた要素、またはその親から、最も近い .note 要素を取得
+      const clickedNote = event.target.closest(".note");
 
       if (
-        clickedElement.classList.contains("note") &&
-        clickedElement !== startNote
+        clickedNote && // .note 要素が見つかった
+        clickedNote !== startNote // 自分自身ではない
       ) {
-        target = clickedElement;
-        targetNoteId = clickedElement.dataset.id;
+        target = clickedNote; // ターゲット要素を更新
+        targetNoteId = clickedNote.dataset.id;
         linkedContent = "ノート: " + targetNoteId;
         linkType = "note";
       }

@@ -722,6 +722,8 @@ function showNoteTextStylePalette(note) {
     state.highlightMode = false;
     state.freeHighlightMode = false;
 
+    hideNoteColorPalette();
+
     // ⭐️ 紐付け開始時に線のSVGを準備 ⭐️
     const svg = createLinkSVG();
     document.body.appendChild(svg);
