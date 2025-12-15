@@ -28,7 +28,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const CMAP_URL = "../../node_modules/pdfjs-dist/cmaps/";
 const CMAP_PACKED = true;
 
-const DEFAULT_URL = "../../web/ymmtTest.pdf";
+const DEFAULT_URL = "../../web/ymmtReview.pdf";
 // To test the AcroForm and/or scripting functionality, try e.g. this file:
 // "../../test/pdfs/160F-2019.pdf"
 

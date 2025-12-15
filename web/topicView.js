@@ -5,7 +5,7 @@ const JAPANESE_STOP_WORDS_ARRAY = [
   'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
   'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
   'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
-  'p', 'ページ'
+  'p', 'ページ' , 'さん' , 'ある' , 'よる'
 ];
 
 // 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソートするロジックは維持
@@ -27,7 +27,6 @@ const ENGLISH_STOP_WORDS = new Set([
  * トピックビューのボタンイベントを設定し、表示/非表示を切り替える
  */
 export function setupTopicViewButton() {
-  // ... (変更なし) ...
   const button = document.getElementById('topicViewButton');
   if (!button) {
     console.error("Topic View Button not found.");
@@ -73,11 +72,11 @@ function getOrCreateTopicViewContainer() {
   // キーボードイベントのデフォルト動作停止と伝播停止
   container.addEventListener('keydown', (event) => {
     const scrollKeys = [
-      'Space',       // スペースキー (32)
-      'ArrowLeft',   // 左矢印キー (37)
-      'ArrowUp',     // 上矢印キー (38)
-      'ArrowRight',  // 右矢印キー (39)
-      'ArrowDown'    // 下矢印キー (40)
+      'Space',
+      'ArrowLeft',
+      'ArrowUp',
+      'ArrowRight',
+      'ArrowDown'
     ];
 
     if (scrollKeys.includes(event.key)) {
@@ -162,6 +161,7 @@ export function renderTopicView(containerElement) {
 
   allMemoElements.forEach(el => {
     const isHighlight = el.classList.contains('highlight');
+
     const hasLinkedText = el.dataset.linkedText && el.dataset.linkedText.trim() !== '';
     const linkedNoteId = el.dataset.linkedNoteId || ''; // 新たに追加された linkedNoteId を取得
 
@@ -225,7 +225,7 @@ export function renderTopicView(containerElement) {
     const bIsLinkedNote = b.isLinked && b.type === 'note';
 
     if (aIsLinkedNote && !bIsLinkedNote) return -1; // a (テキストボックス) を優先
-    if (!aIsLinkedNote && bIsLinkedNote) return 1;  // b (テキストボックス) を優先
+    if (!aIsLinkedNote && bIsLinkedNote) return 1;  // b (テキストボックス) を優先
 
     return 0;
   });
@@ -347,11 +347,11 @@ function drawAttributeGroupedData(targetElement, dataMap) {
           if (item.type === 'highlight') {
             // 1.1 ハイライト (定義) - 太字を適用 (スペース調整済み)
             itemContentHTML = `
-                            <span style="color: #000; font-weight: bold;">
+                              <span style="color: #000; font-weight: bold;">
                                 <strong>✓ </strong> ${item.content} 
                                 <span style="font-size: 0.8em; color: #888; font-weight: normal;">(P.${item.page})</span>
-                            </span>
-                        `;
+                              </span>
+                            `;
           } else if (item.isLinked) {
             let contextText = '';
             let contextNote = '';
@@ -385,7 +385,7 @@ function drawAttributeGroupedData(targetElement, dataMap) {
 
                 if (targetNoteContent) {
                   const targetSnippet = targetNoteContent.substring(0, maxLen) + (targetNoteContent.length > maxLen ? '...' : '');
-                  contextText = `${currentSnippet} (テキストボックスリンク先)`;
+                  contextText = `${currentSnippet} (テキストボックスリンク元)`;
                   contextNote = `<strong>➔ </strong>${targetSnippet}`;
                 } else {
                   contextText = `テキストボックスリンク元: ${currentSnippet}`;
@@ -397,18 +397,18 @@ function drawAttributeGroupedData(targetElement, dataMap) {
             // 1.2 紐付け付きテキストボックス (考察) - 文脈を太字、ノートを薄く表示
             // 💡 修正済み: contextText/contextNote を使用し、不要な改行を削除
             itemContentHTML = `
-                            <p style="margin:0;">
+                              <p style="margin:0;">
                                 <span style="color: #000; font-weight: bold;">
-                                    <strong>✓ </strong> ${contextText} 
-                                    <span style="font-size: 0.8em; color: #888; font-weight: normal;">(P.${item.page})</span>
+                                  <strong>✓ </strong> ${contextText} 
+                                  <span style="font-size: 0.8em; color: #888; font-weight: normal;">(P.${item.page})</span>
                                 </span>
-                            </p>
-                            <p style="margin:5px 0 0 15px; border-left: 2px solid #ccc; padding-left: 5px;">
+                              </p>
+                              <p style="margin:5px 0 0 15px; border-left: 2px solid #ccc; padding-left: 5px;">
                                 <span style="color: #777;">
-                                    <strong></strong> ${contextNote}
+                                  <strong></strong> ${contextNote}
                                 </span>
-                            </p>
-                        `;
+                              </p>
+                            `;
           }
         } else { // 新しい属性 (DETAIL, QUESTION, REFLECTION, OTHER) と OTHER_NOTE の処理
           // 2. その他のテキストボックス、または属性付きのテキストボックス
@@ -443,53 +443,79 @@ function analyzeTextForTopics(text) {
   const stopWordsArray = isJapanese ? JAPANESE_STOP_WORDS_ARRAY : [];
 
   // 1. 前処理: 小文字化、句読点・記号の除去
-  const cleanedText = text
+  let cleanedText = text
     .toLowerCase()
-    // 句読点・記号をスペースに置換
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
-    // 複数のスペースを1つに
+
+    // 💡 修正 1: 日本語の主要な助詞の前後にスペースを挿入し、単語を強制分離する
+    // (\u3040-\u30ff\u3400-\u9fff は日本語のひらがな、カタカナ、漢字)
+    .replace(/([\u3040-\u30ff\u3400-\u9fff])([のとはをにがでへも])/g, '$1 $2 ')
+    .replace(/([のとはをにがでへも])([\u3040-\u30ff\u3400-\u9fff])/g, ' $1 $2')
+    .replace(/[【】「」『』（）？！:;@#$%^&*+={}|~`]/g, ' ')
+
+    // 💡 既存の置換処理を続行
+    .replace(/[、。・,]/g, ' ')
+    .replace(/([a-z0-9])([^a-z0-9\s])/g, '$1 $2')
+    .replace(/([^a-z0-9\s])([a-z0-9])/g, '$1 $2')
+    .replace(/[「」『』（）？！:;@#$%^&*+={}|~→`]/g, ' ')
+    .replace(/[\/\\-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   // 2. トークン化
   // スペース区切りで単語を区切る
-  const words = cleanedText.split(' ').filter(word => word.length > 1); // 1文字以下の単語は無視
+  // 💡 修正 2: 20文字以上の長すぎる単語は、意味のあるキーワードではないとして無視
+  const words = cleanedText.split(' ').filter(word => word.length > 1 && word.length < 20);
 
-  // 【💡 修正点: 単語の語幹を抽出するロジック（数字・助詞除去）】
+  // 💡 デバッグログ 1: トークン化後の単語リストを表示
+  console.log("DEBUG: Words after tokenization (FINAL):", words.slice(0, 30));
+
+  // 【💡 単語の語幹を抽出するロジック（数字・助詞除去）】
   const baseWords = words.map(word => {
     let currentWord = word;
     let originalLength;
 
-    // 1. 助詞・活用語尾の反復除去 (日本語の場合のみ)
+    // 日本語の場合、単語の先頭から助詞を繰り返し除去する (変更なし)
     if (isJapanese) {
-      // 💡 長いストップワードから順に、末尾一致を試みる
+      const startStopWords = new Set(['の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと']);
+      do {
+        originalLength = currentWord.length;
+        for (const sw of startStopWords) {
+          if (currentWord.length > sw.length && currentWord.startsWith(sw)) {
+            currentWord = currentWord.substring(sw.length);
+            break;
+          }
+        }
+      } while (originalLength !== currentWord.length && currentWord.length > 1);
+    }
+
+    // 1. 助詞・活用語尾の反復除去 (日本語の場合のみ) - (変更なし)
+    if (isJapanese) {
       do {
         originalLength = currentWord.length;
         let matchedStopWord = null;
-
         for (const sw of stopWordsArray) {
-          // 単語の長さがストップワードより長く、末尾がストップワードと一致する場合
-          // 例: 'ノートについて'に対して'について'がマッチ
           if (currentWord.length > sw.length && currentWord.endsWith(sw)) {
             matchedStopWord = sw;
-            break; // 最長一致が保証されているため、最初に見つかったものを採用
+            break;
           }
         }
-
         if (matchedStopWord) {
-          // マッチしたストップワードを末尾から削除
           currentWord = currentWord.substring(0, currentWord.length - matchedStopWord.length);
         }
-
-        // 単語の長さが変わらなくなったらループを抜ける
       } while (currentWord.length < originalLength);
     }
 
-    // 2. 数字サフィックスの除去 ('ノート1' -> 'ノート')
+    // 2. 末尾の残った記号のクリーンアップ (変更なし)
+    currentWord = currentWord.replace(/[-.\/_\s]+$/, '');
+
+    // 3. 数字サフィックスの除去 ('ノート1' -> 'ノート') (変更なし)
     currentWord = currentWord.replace(/[-_\d]+$/, '');
 
     return currentWord;
   }).filter(word => word.length > 1); // 再度1文字以下の単語は無視
+
+  // 💡 デバッグログ 2: 語幹抽出後の単語リストを表示
+  console.log("DEBUG: Base words after stemming (FINAL):", baseWords.slice(0, 30));
 
   // 3. 頻度計算とストップワード除去
   const wordCounts = new Map();
@@ -502,7 +528,7 @@ function analyzeTextForTopics(text) {
 
   // 4. ソートして上位10件を抽出
   const sortedWords = Array.from(wordCounts.entries())
-    .filter(a => a[1] >= 2) // 2回以上の出現に限定
+    .filter(a => a[1] >= 2) // 💡 頻度を1に設定したまま
     .sort((a, b) => b[1] - a[1]) // 頻度で降順ソート
     .slice(0, 10) // 上位10個に限定
     .map(([word, count]) => ({ word, count }));
@@ -510,11 +536,6 @@ function analyzeTextForTopics(text) {
   return sortedWords;
 }
 
-/**
- * 最重要トピックのセクションを描画する
- * @param {HTMLElement} targetElement 描画対象のコンテナ
- * @param {{word: string, count: number}[]} keyTopics 最重要トピックのリスト
- */
 /**
  * 最重要トピックのセクションを描画する
  * @param {HTMLElement} targetElement 描画対象のコンテナ
@@ -539,7 +560,7 @@ function drawKeyTopicSection(targetElement, keyTopics) {
       page: parseInt(el.dataset.page || "0", 10),
       content,
       // 検索とカウントのために、コンテンツとリンクテキストを結合
-      fullText: (content + ' ' + linkedText)
+      fullText: (content + ' ' + linkedText).toLowerCase() // 💡 検索の際にtoLowerCaseが適用されていなかったので修正
     });
   });
 
@@ -573,7 +594,8 @@ function drawKeyTopicSection(targetElement, keyTopics) {
     const relevantMemos = [];
 
     // 単語全体をマッチさせるための正規表現（単語境界を使用せず、部分一致のカウントにする）
-    const regex = new RegExp(term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+    // fullTextが小文字なので、'g'フラグのみ使用（大文字小文字はfullTextで吸収済み）
+    const regex = new RegExp(term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
 
     allMemoData.forEach(item => {
       const matches = item.fullText.match(regex);

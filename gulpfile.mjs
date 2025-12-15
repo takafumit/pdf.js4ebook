@@ -1138,7 +1138,7 @@ function buildGeneric(defines, dir) {
       .pipe(gulp.dest(dir + "web")),
 
     gulp
-      .src("web/ymmtTest.pdf", { encoding: false })
+      .src("web/ymmtReview.pdf", { encoding: false })
       .pipe(gulp.dest(dir + "web")),
   ]);
 }

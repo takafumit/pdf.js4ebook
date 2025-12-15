@@ -27,7 +27,7 @@ const CMAP_PACKED = true;
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "../../node_modules/pdfjs-dist/build/pdf.worker.mjs";
 
-const DEFAULT_URL = "../../web/ymmtTest.pdf";
+const DEFAULT_URL = "../../web/ymmtReview.pdf";
 const DEFAULT_SCALE_DELTA = 1.1;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 10.0;

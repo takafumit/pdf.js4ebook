@@ -28,7 +28,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const CMAP_URL = "../../node_modules/pdfjs-dist/cmaps/";
 const CMAP_PACKED = true;
 
-const DEFAULT_URL = "../../web/ymmtTest.pdf";
+const DEFAULT_URL = "../../web/ymmtReview.pdf";
 const PAGE_TO_VIEW = 1;
 const SCALE = 1.0;
 
