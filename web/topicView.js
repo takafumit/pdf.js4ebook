@@ -1,15 +1,33 @@
-// 最重要トピック対応の処理を追加
+// topicView.js
+
+// =============================================================
+// I. 初期設定と共通変数 【修正済み】
+// =============================================================
+
+// 辞書で対応しきれない汎用的なストップワード（計算効率のための補完）
 const JAPANESE_STOP_WORDS_ARRAY = [
   'の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと',
-  'ある', 'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
+  'いる', 'する', 'なる', 'れる', 'られる', 'いる', 'いる', 'という', 'この',
   'その', 'あの', 'これ', 'それ', 'あれ', 'もし', 'または', 'そして', 'しかし', 'また',
   'ため', 'よう', 'ため', 'とき', 'だけ', 'たら', 'ので', 'では', 'では', 'です',
   'ます', 'あり', 'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', '的', 'い', 'な',
-  'p', 'ページ' , 'さん' , 'ある' , 'よる'
+  'p', 'ページ', 'さん', '弊社', '貴社'
 ];
 
-// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソートするロジックは維持
+// 💡 語尾除去のために、長いストップワードからチェックするように文字数で降順ソート
 JAPANESE_STOP_WORDS_ARRAY.sort((a, b) => b.length - a.length);
+
+// 💡 【新規追加】語頭から削除したいノイズ (動詞の活用語尾や助詞など)
+const JAPANESE_PREFIX_STEM_NOISE_ARRAY = [
+  'ある', 'よる', 'いう', 'なる', 'れる', 'られる', 'いる', 'でき', 'あり',
+  'なっ', 'し', 'ん', 'られ', 'でき', 'いく', 'お', 'この', 'その', 'あの',
+  'これ', 'それ', 'あれ', 'では', 'いう', 'する', 'いう', 'ため',
+  // 助詞を含む、短いノイズ
+  'を', 'に', 'が', 'と', 'で', 'へ', 'も', 'は', 'から', 'より'
+];
+
+// 💡 語頭ノイズ除去のために、長いものからチェックするように文字数で降順ソート
+JAPANESE_PREFIX_STEM_NOISE_ARRAY.sort((a, b) => b.length - a.length);
 
 // Setに変換（検索の高速化のため）
 const JAPANESE_STOP_WORDS = new Set(JAPANESE_STOP_WORDS_ARRAY);
@@ -22,6 +40,10 @@ const ENGLISH_STOP_WORDS = new Set([
   'as', 'for', 'about', 'out', 'up', 'down', 'only', 'all', 'any', 'some',
   'p'
 ]);
+
+// 💡 【新規】全てのストップワードの Set (最終チェック用)
+const ALL_STOP_WORDS = new Set([...JAPANESE_STOP_WORDS, ...ENGLISH_STOP_WORDS]);
+
 
 /**
  * トピックビューのボタンイベントを設定し、表示/非表示を切り替える
@@ -225,7 +247,7 @@ export function renderTopicView(containerElement) {
     const bIsLinkedNote = b.isLinked && b.type === 'note';
 
     if (aIsLinkedNote && !bIsLinkedNote) return -1; // a (テキストボックス) を優先
-    if (!aIsLinkedNote && bIsLinkedNote) return 1;  // b (テキストボックス) を優先
+    if (!aIsLinkedNote && bIsLinkedNote) return 1;  // b (テキストボックス) を優先
 
     return 0;
   });
@@ -441,6 +463,9 @@ function analyzeTextForTopics(text) {
   const stopWords = isJapanese ? JAPANESE_STOP_WORDS : ENGLISH_STOP_WORDS;
   // 💡 語尾除去処理のために、ソート済みの配列版も利用
   const stopWordsArray = isJapanese ? JAPANESE_STOP_WORDS_ARRAY : [];
+  // 💡 語頭ノイズ配列も利用
+  const prefixNoiseArray = isJapanese ? JAPANESE_PREFIX_STEM_NOISE_ARRAY : [];
+
 
   // 1. 前処理: 小文字化、句読点・記号の除去
   let cleanedText = text
@@ -474,21 +499,26 @@ function analyzeTextForTopics(text) {
     let currentWord = word;
     let originalLength;
 
-    // 日本語の場合、単語の先頭から助詞を繰り返し除去する (変更なし)
+
+    // 🚨 【修正 1】語頭から残りがちなノイズ（ある、よる、など）の反復除去
     if (isJapanese) {
-      const startStopWords = new Set(['の', 'は', 'を', 'に', 'が', 'と', 'へ', 'で', 'も', 'から', 'より', 'など', 'こと']);
       do {
         originalLength = currentWord.length;
-        for (const sw of startStopWords) {
-          if (currentWord.length > sw.length && currentWord.startsWith(sw)) {
-            currentWord = currentWord.substring(sw.length);
+        let matchedPrefix = null;
+        for (const pn of prefixNoiseArray) {
+          // ノイズが単語全体を構成している場合はスキップ（例: 単語が 'ある' のみの場合）
+          if (currentWord.length > pn.length && currentWord.startsWith(pn)) {
+            matchedPrefix = pn;
             break;
           }
         }
-      } while (originalLength !== currentWord.length && currentWord.length > 1);
+        if (matchedPrefix) {
+          currentWord = currentWord.substring(matchedPrefix.length).trim();
+        }
+      } while (currentWord.length < originalLength && currentWord.length > 1);
     }
 
-    // 1. 助詞・活用語尾の反復除去 (日本語の場合のみ) - (変更なし)
+    // 2. 助詞・活用語尾の反復除去 (日本語の場合のみ) - 既存ロジック
     if (isJapanese) {
       do {
         originalLength = currentWord.length;
@@ -505,10 +535,10 @@ function analyzeTextForTopics(text) {
       } while (currentWord.length < originalLength);
     }
 
-    // 2. 末尾の残った記号のクリーンアップ (変更なし)
+    // 3. 末尾の残った記号のクリーンアップ (変更なし)
     currentWord = currentWord.replace(/[-.\/_\s]+$/, '');
 
-    // 3. 数字サフィックスの除去 ('ノート1' -> 'ノート') (変更なし)
+    // 4. 数字サフィックスの除去 ('ノート1' -> 'ノート') (変更なし)
     currentWord = currentWord.replace(/[-_\d]+$/, '');
 
     return currentWord;
@@ -520,15 +550,15 @@ function analyzeTextForTopics(text) {
   // 3. 頻度計算とストップワード除去
   const wordCounts = new Map();
   baseWords.forEach(word => {
-    // 判定されたストップワードリストを使用
-    if (!stopWords.has(word) && word.trim() !== '') {
+    // 🚨 最終的なストップワードチェックを ALL_STOP_WORDS で実施
+    if (!ALL_STOP_WORDS.has(word) && word.trim() !== '') {
       wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
     }
   });
 
   // 4. ソートして上位10件を抽出
   const sortedWords = Array.from(wordCounts.entries())
-    .filter(a => a[1] >= 2) // 💡 頻度を1に設定したまま
+    .filter(a => a[1] >= 2) // 💡 頻度を2以上に設定
     .sort((a, b) => b[1] - a[1]) // 頻度で降順ソート
     .slice(0, 10) // 上位10個に限定
     .map(([word, count]) => ({ word, count }));
