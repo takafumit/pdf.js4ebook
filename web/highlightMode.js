@@ -4,7 +4,6 @@ import { updateNotePositions, scheduleSave } from './annotationManager.js';
 import { saveHighlightsToServer } from './serverStorage.js';
 import { OP, doOp } from './undoRedoManager.js';
 
-
 let currentHighlightColor = "yellow";
 
 /* ---------- ハイライトを複数行選択したときに1つにまとめるときに使用 ---------- */

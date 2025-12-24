@@ -357,7 +357,6 @@ function buildGraphData(keyTerms, relationMap) {
   return { nodes, links };
 }
 
-
 // =============================================================
 // IV. メイン描画ロジック (変更あり)
 // =============================================================
@@ -366,60 +365,86 @@ function buildGraphData(keyTerms, relationMap) {
  * グラフビューを描画するメイン関数
  */
 export function renderGraphView() {
-  // 1. コンテナの準備
+  // 1. コンテナ（全画面の白い枠）の準備
   const container = document.getElementById("graphView") || (() => {
     const div = document.createElement("div");
     div.id = "graphView";
-    div.style.position = "fixed";
-    div.style.top = "0";
-    div.style.left = "0";
-    div.style.width = "95%";
-    div.style.height = "95%";
-    div.style.background = "#fff";
-    div.style.zIndex = "9999";
-    div.style.overflow = "auto";
-    div.style.padding = "20px";
-    div.style.boxShadow = "0 0 15px rgba(0,0,0,0.2)";
+    // スタイル設定：画面いっぱいに広げ、背景を完全にロック
+    Object.assign(div.style, {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      width: "100vw",
+      height: "100vh",
+      background: "#fff",
+      zIndex: "9999",
+      padding: "20px",
+      boxSizing: "border-box",
+      overflowY: "auto",      // 中身が長いときはスクロール可能に
+      overflowX: "hidden"
+    });
+
     document.body.appendChild(div);
+    // 💡 背景（PDF側）のスクロールを止める
+    document.body.style.overflow = "hidden";
     return div;
   })();
 
-  const allMemoData = extractAllMemoText();
-  if (allMemoData.length === 0) {
-    container.innerHTML = "<h2>データがありません</h2>";
-    return;
-  }
-
-  // 2. キーワードの抽出
-  const keyTerms = extractKeyTermsTFIDF(allMemoData);
-
-  // 3. 関連性 (共起と紐付け) の計算
-  const relationData = calculateRelations(allMemoData, keyTerms);
-
-  // 4. グラフデータ構造の構築
-  const { nodes, links } = buildGraphData(keyTerms, relationData);
-
-  // 5. 基本UIの描画
+  // 2. 🚨【重要】まずボタンを含む共通のUIを先に描画する
+  // これにより、データが空でもボタンだけは必ず表示されます
   container.innerHTML = `
     <h1 style="color:#2a66b9;">グラフビュー</h1>
     
     <button id="closeGraphBtn"
         style="
-            position: absolute;
+            position: fixed;   /* 💡 スクロールしても右上に固定 */
             top: 20px;
-            right: 20px;
-            padding:8px 16px; 
-            background:#e44; 
-            color:#fff; 
-            border:none; 
-            border-radius:4px; 
-            cursor:pointer; 
-            font-weight:bold;
-            z-index: 10000;
+            right: 30px;      /* スクロールバーに重ならない距離 */
+            padding: 10px 20px; 
+            background: #e44; 
+            color: #fff; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-weight: bold;
+            z-index: 10001;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         ">
         PDF編集に戻る
     </button>
     
+    <div id="graphInnerArea">
+        </div>
+  `;
+
+  // 閉じるボタンの動作
+  document.getElementById("closeGraphBtn").onclick = () => {
+    container.remove();
+    document.body.style.overflow = ""; // PDF側のスクロールを再開
+  };
+
+  const graphInnerArea = document.getElementById("graphInnerArea");
+
+  // 3. データの抽出とチェック
+  const allMemoData = extractAllMemoText();
+
+  // 🚨 データの有無判定：空の場合はメッセージだけ出して処理を終える
+  if (allMemoData.length === 0) {
+    graphInnerArea.innerHTML = `
+      <div style="text-align:center; margin-top:100px; color:#888;">
+        <h2>注釈データがありません</h2>
+        <p>PDFにハイライトやメモを追加してから再度お試しください。</p>
+      </div>`;
+    return; // ここで終わっても、外側のボタンは既に描画済みなので消えません
+  }
+
+  // --- 4. グラフの描画（データがある場合のみ実行） ---
+  const keyTerms = extractKeyTermsTFIDF(allMemoData);
+  const relationData = calculateRelations(allMemoData, keyTerms);
+  const { nodes, links } = buildGraphData(keyTerms, relationData);
+
+  // グラフ描画用のHTMLを innerArea に追加
+  graphInnerArea.innerHTML = `
     <p style="margin-bottom:20px; color:#555; font-size:0.9em;">
         <strong>線の凡例:</strong><br>
         <span style="color:#d05a00; font-weight:bold;">─── (太線)</span> : ノート間の直接紐付け (強い関連)<br>
@@ -433,7 +458,7 @@ export function renderGraphView() {
     <div id="linkInfoList" style="margin-top:20px; padding:15px; border:1px solid #eee; background:#fafafa; max-height: 400px; overflow-y: auto;">
         <h3>関連性詳細リスト</h3>
     </div>
-`;
+  `;
 
   document.getElementById("closeGraphBtn").onclick = () => {
     container.remove();
